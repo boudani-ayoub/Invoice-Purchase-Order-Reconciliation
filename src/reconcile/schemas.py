@@ -32,6 +32,8 @@ class CsvSchema:
     columns: tuple[ColumnDefinition, ...]
     key_columns: tuple[str, ...]
     duplicate_policy: DuplicatePolicy
+    document_key_columns: tuple[str, ...] = ()
+    consistent_columns: tuple[str, ...] = ()
 
     @property
     def headers(self) -> tuple[str, ...]:
@@ -53,6 +55,8 @@ PURCHASE_ORDER_SCHEMA = CsvSchema(
     ),
     key_columns=("po_number", "line_number"),
     duplicate_policy=DuplicatePolicy.REJECT,
+    document_key_columns=("po_number",),
+    consistent_columns=("supplier_id", "order_date", "currency"),
 )
 
 GOODS_RECEIPT_SCHEMA = CsvSchema(
@@ -102,6 +106,8 @@ INVOICE_SCHEMA = CsvSchema(
     ),
     key_columns=("supplier_id", "invoice_number", "line_number"),
     duplicate_policy=DuplicatePolicy.REVIEW,
+    document_key_columns=("supplier_id", "invoice_number"),
+    consistent_columns=("invoice_date", "currency"),
 )
 
 INPUT_SCHEMAS = (PURCHASE_ORDER_SCHEMA, GOODS_RECEIPT_SCHEMA, INVOICE_SCHEMA)

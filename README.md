@@ -4,8 +4,8 @@ A local-first Python application for three-way matching between purchase orders,
 goods receipts, and supplier invoices. The project models the controls an accounts-payable
 team applies before approving an invoice for payment.
 
-> **Current status:** Phase A (project foundation) is complete. CSV loading, validation,
-> reconciliation, reporting, and the CLI are intentionally reserved for later phases.
+> **Current status:** Phase B is complete. The project provides a validated CSV ingestion layer,
+> but reconciliation, reporting, and the CLI are intentionally reserved for later phases.
 
 ## Why this project exists
 
@@ -20,6 +20,8 @@ decisions inside data-manipulation code.
 ```text
 src/reconcile/
 ├── config.py       # Business policy configuration
+├── errors.py       # Structured source-validation issues
+├── loaders.py      # Strict, schema-driven CSV ingestion
 ├── models.py       # Immutable domain and result objects
 └── schemas.py      # Canonical CSV contracts
 
@@ -27,17 +29,18 @@ examples/sample_data/  # Purpose-built demonstration data
 tests/                 # Foundation and fixture-contract tests
 ```
 
-The domain package does not depend on CSV parsing, a CLI framework, or report formatting.
-This keeps the future reconciliation engine independently testable. Phase A uses only the
-Python standard library at runtime: dataclasses make the data contracts explicit, and
-`Decimal` prevents binary floating-point arithmetic from entering financial calculations.
+The domain package does not depend on a CLI framework or report formatting. Loaders convert CSV
+cells into domain records but do not compare datasets. This keeps the future reconciliation
+engine independently testable. The project uses only the Python standard library at runtime:
+dataclasses make the data contracts explicit, and `Decimal` prevents binary floating-point
+arithmetic from entering financial calculations.
 
 ## Input contracts
 
 All files are UTF-8 CSV documents with one header row. Column names and order are exact.
 Identifiers are non-empty text, dates use `YYYY-MM-DD`, line numbers are positive integers,
 quantities are positive decimal strings, prices are non-negative decimal strings, and
-currencies are uppercase three-letter codes. Phase B will enforce these constraints and report
+currencies are uppercase three-letter codes. Phase B enforces these constraints and reports
 row-level errors.
 
 Required identifiers have a distinct `NON_EMPTY_TEXT` schema type. `description` uses `TEXT` and
@@ -151,6 +154,49 @@ random generated rows.
 
 The duplicate row in `invoices.csv` is intentional.
 
+## Loading validated records
+
+Install the package, then use the public loader functions:
+
+```python
+from reconcile import load_goods_receipts, load_invoices, load_purchase_orders
+
+purchase_orders = load_purchase_orders("examples/sample_data/purchase_orders.csv")
+receipts = load_goods_receipts("examples/sample_data/goods_receipts.csv")
+invoices = load_invoices("examples/sample_data/invoices.csv")
+```
+
+Each function returns an immutable tuple of typed domain dataclasses. Dates become
+`datetime.date`, line numbers become `int`, and quantities and prices become `Decimal`. Records
+remain in source order; deterministic allocation order belongs to Phase C.
+
+### Source validation behavior
+
+- Headers must match the canonical columns and order exactly.
+- Empty files, header-only files, invalid UTF-8, malformed CSV, and wrong-width rows fail clearly.
+- Every cell rejects leading or trailing whitespace. Required identifiers reject empty values;
+  PO descriptions may be empty.
+- Positive integers, finite decimals, calendar dates, and currency syntax are validated before
+  a dataclass is constructed.
+- Recoverable scalar errors are collected across the file and raised together as
+  `CsvValidationError`. Each `CsvValidationIssue` contains its path, CSV row number, column,
+  rejected value, and reason.
+- Duplicate PO and goods-receipt line identities are invalid. Duplicate invoice-line identities
+  are preserved for Phase C review and are never silently deduplicated.
+- PO lines must agree on supplier, order date, and currency. Lines in the same logical invoice
+  must agree on invoice date and currency. No extra goods-receipt document rules are assumed.
+
+Example error shape:
+
+```text
+CSV validation failed with 1 issue:
+
+purchase_orders.csv:17
+column: ordered_quantity
+value: '-3'
+reason: ordered_quantity must be a finite decimal greater than zero
+```
+
 ## Validation and reconciliation boundary
 
 Source validation and business reconciliation answer different questions:
@@ -165,6 +211,9 @@ Source validation and business reconciliation answer different questions:
 For example, `PO-999` is a valid non-empty PO reference in an invoice and must pass invoice
 loading even when no purchase order with that number exists. Loaders must not access another
 dataset to decide whether a row is valid.
+
+Phase B therefore does **not** make this a working reconciliation application yet. It guarantees
+that each dataset is structurally trustworthy enough for the Phase C engine to compare.
 
 ## Known ambiguity and V0.1 limit
 
@@ -196,13 +245,19 @@ python -m ruff check .
 python -m ruff format --check .
 ```
 
+Tests deliberately do not inject `src` into `sys.path`. The documented editable installation is
+required, and a packaging smoke test confirms the installed distribution metadata matches
+`pyproject.toml`.
+
 ## Roadmap
 
-- **Phase B:** strict CSV loading and row-level validation with clear errors
+- **Phase A:** complete — package, schemas, domain models, fixtures, and tooling
+- **Phase B:** complete — strict CSV loading and source validation
 - **Phase C:** deterministic reconciliation and cumulative allocation rules
 - **Phase D:** terminal, JSON, and CSV reporting with per-currency totals
 - **Phase E:** command-line interface
 - **Phase F:** portfolio documentation and CI polish
 
-The next implementation step is Phase B only: convert each CSV row into its domain model,
-validate structural and business constraints, and fail with source filename and row number.
+The next implementation step is Phase C only: implement deterministic PO-line lookup, receipt
+aggregation, duplicate classification, and cumulative invoice allocation against ordered and
+received quantities, with rule-level tests before reporting or CLI work begins.

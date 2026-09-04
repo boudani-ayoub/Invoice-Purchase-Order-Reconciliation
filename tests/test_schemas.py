@@ -22,6 +22,14 @@ def test_invoice_key_includes_supplier_and_line() -> None:
     assert INVOICE_SCHEMA.duplicate_policy is DuplicatePolicy.REVIEW
 
 
+def test_document_consistency_contracts_are_schema_driven() -> None:
+    assert PURCHASE_ORDER_SCHEMA.document_key_columns == ("po_number",)
+    assert PURCHASE_ORDER_SCHEMA.consistent_columns == ("supplier_id", "order_date", "currency")
+    assert GOODS_RECEIPT_SCHEMA.document_key_columns == ()
+    assert INVOICE_SCHEMA.document_key_columns == ("supplier_id", "invoice_number")
+    assert INVOICE_SCHEMA.consistent_columns == ("invoice_date", "currency")
+
+
 def test_prices_are_non_negative_while_quantities_are_positive() -> None:
     column_types = {column.name: column.data_type for column in PURCHASE_ORDER_SCHEMA.columns}
 
