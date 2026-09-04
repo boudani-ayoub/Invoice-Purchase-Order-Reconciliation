@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest -vv
+
+      - name: Run Ruff lint
+        run: python -m ruff check .
+
+      - name: Check Ruff formatting
+        run: python -m ruff format --check .
+
+      - name: Check installed dependencies
+        run: python -m pip check
+
+      - name: Smoke test CLI entry points
+        run: |
+          python -m reconcile --help
+          reconcile --help
+
+      - name: Smoke test sample reconciliation
+        run: |
+          reconcile \
+            --purchase-orders examples/sample_data/purchase_orders.csv \
+            --receipts examples/sample_data/goods_receipts.csv \
+            --invoices examples/sample_data/invoices.csv \
+            --format json \
+            --output "${RUNNER_TEMP}/sample-report.json"
+
+      - name: Build source and wheel distributions
+        run: python -m build
+
+      - name: Smoke test built wheel
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m venv "${RUNNER_TEMP}/wheel-venv"
+          "${RUNNER_TEMP}/wheel-venv/bin/python" -m pip install --no-deps dist/*.whl
+          "${RUNNER_TEMP}/wheel-venv/bin/reconcile" --help
+          "${RUNNER_TEMP}/wheel-venv/bin/reconcile" \
+            --purchase-orders examples/sample_data/purchase_orders.csv \
+            --receipts examples/sample_data/goods_receipts.csv \
+            --invoices examples/sample_data/invoices.csv \
+            --format json \
+            --output "${RUNNER_TEMP}/wheel-sample-report.json"
