@@ -4,9 +4,9 @@ A local-first Python application for three-way matching between purchase orders,
 goods receipts, and supplier invoices. The project models the controls an accounts-payable
 team applies before approving an invoice for payment.
 
-> **Current status:** Phase C is complete. The project provides validated CSV ingestion and a
-> deterministic reconciliation engine. Human-readable reporting and the CLI are intentionally
-> reserved for later phases.
+> **Current status:** Phase C.1 is complete. The project provides validated CSV ingestion and a
+> deterministic reconciliation engine with report-ready result records. Human-readable reporting
+> and the CLI are intentionally reserved for later phases.
 
 ## Why this project exists
 
@@ -234,6 +234,19 @@ results, summary = reconcile(purchase_orders, receipts, invoices)
 It performs no file access, mutates no inputs, uses no global state, and returns the same ordered
 results for any permutation of the same validated records.
 
+### Result contract
+
+Each `ReconciliationResult` preserves the complete invoice-line identity:
+
+```text
+(supplier_id, invoice_number, invoice_line_number)
+```
+
+It also carries the invoice date, invoice unit price, and matched PO unit price needed for
+reporting, alongside the PO/item reference, quantities, findings, status, currency, and potential
+disputed amount. `po_unit_price` is `None` for `UNKNOWN_PO` and `UNKNOWN_ITEM` because those rows
+have no trusted matched PO item; zero is reserved for a known zero price.
+
 ### PO resolution and receipt evidence
 
 Purchase-order lines are indexed by `(po_number, line_number)`. A missing PO produces
@@ -319,17 +332,30 @@ Unknown PO/item references, duplicate identities, supplier mismatches, and curre
 use the full invoice extended amount. Missing receipt evidence produces zero supported quantity
 for exposure calculation while retaining `received_quantity = None` in the result.
 
-Other review lines use one non-double-counting calculation:
+Other review lines use one non-double-counting calculation. When the invoice price is within
+tolerance, it is the accepted unit-price baseline for supported quantity:
 
 ```text
 invoice amount   = invoiced quantity * invoice unit price
-supported amount = supported quantity * PO unit price
+supported amount = supported quantity * invoice unit price
 disputed amount  = max(invoice amount - supported amount, 0)
 ```
 
+This ensures that a tolerated invoice price is not disputed merely because a quantity issue also
+exists. For example, invoicing 120 units at `101.50` against 100 supported units at a PO price of
+`100.00` and a 2% tolerance exposes only `20 * 101.50 = 2030.00`.
+
+When the invoice price is outside tolerance and produces `PRICE_MISMATCH`, supported quantity is
+valued at the PO price:
+
+```text
+supported amount = supported quantity * PO unit price
+```
+
 A fully matched line, including a price difference inside tolerance, has no disputed amount.
-Amounts are rounded with `money_decimal_places` and `money_rounding`. Summary amounts are built
-from rounded line/group exposure and kept separate by invoice currency.
+Missing receipt evidence still provides zero supported quantity, so the full invoice amount is
+exposed. Amounts are rounded with `money_decimal_places` and `money_rounding`. Summary amounts are
+built from rounded line/group exposure and kept separate by invoice currency.
 
 ### Summary semantics
 
@@ -383,10 +409,12 @@ required, and a packaging smoke test confirms the installed distribution metadat
 - **Phase A:** complete — package, schemas, domain models, fixtures, and tooling
 - **Phase B:** complete — strict CSV loading and source validation
 - **Phase C:** complete — deterministic reconciliation and cumulative allocation
+- **Phase C.1:** complete — report-ready results and corrected tolerated-price exposure
 - **Phase D:** terminal, JSON, and CSV reporting with per-currency totals
 - **Phase E:** command-line interface
 - **Phase F:** portfolio documentation and CI polish
 
-The next implementation step is Phase D only: render existing results and summaries as readable
-terminal output plus JSON and CSV exports. Reporting must use the summary's already-deduplicated,
-per-currency totals rather than recomputing financial exposure from row results.
+The next implementation step is Phase D only: define report-schema tests, then render existing
+results and summaries as readable terminal output plus JSON and CSV exports. Reporting must use
+the summary's already-deduplicated, per-currency totals rather than recomputing financial exposure
+from row results.
