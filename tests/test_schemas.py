@@ -29,6 +29,15 @@ def test_prices_are_non_negative_while_quantities_are_positive() -> None:
     assert column_types["unit_price"] is ColumnType.NON_NEGATIVE_DECIMAL
 
 
+def test_identifier_and_description_blank_policies_are_explicit() -> None:
+    column_types = {column.name: column.data_type for column in PURCHASE_ORDER_SCHEMA.columns}
+
+    assert column_types["po_number"] is ColumnType.NON_EMPTY_TEXT
+    assert column_types["supplier_id"] is ColumnType.NON_EMPTY_TEXT
+    assert column_types["item_code"] is ColumnType.NON_EMPTY_TEXT
+    assert column_types["description"] is ColumnType.TEXT
+
+
 def test_all_schema_headers_are_unique() -> None:
     for schema in (PURCHASE_ORDER_SCHEMA, GOODS_RECEIPT_SCHEMA, INVOICE_SCHEMA):
         assert len(schema.headers) == len(set(schema.headers))

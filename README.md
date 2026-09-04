@@ -40,6 +40,10 @@ quantities are positive decimal strings, prices are non-negative decimal strings
 currencies are uppercase three-letter codes. Phase B will enforce these constraints and report
 row-level errors.
 
+Required identifiers have a distinct `NON_EMPTY_TEXT` schema type. `description` uses `TEXT` and
+may be blank. Values containing leading or trailing whitespace will be rejected consistently
+rather than silently normalized.
+
 ### `purchase_orders.csv`
 
 | Column | Type | Meaning |
@@ -146,6 +150,21 @@ random generated rows.
 | `PO-999` | Invoice references an unknown PO |
 
 The duplicate row in `invoices.csv` is intentional.
+
+## Validation and reconciliation boundary
+
+Source validation and business reconciliation answer different questions:
+
+- **Phase B validation:** can one CSV be parsed into structurally valid domain records? It rejects
+  malformed headers and scalar values, invalid source identities, and inconsistent fields within
+  one PO or invoice document.
+- **Phase C reconciliation:** do valid invoice, PO, and receipt records agree with one another? It
+  will classify unknown references, mismatched items, suppliers or currencies, missing receipts,
+  excessive quantities, and price differences.
+
+For example, `PO-999` is a valid non-empty PO reference in an invoice and must pass invoice
+loading even when no purchase order with that number exists. Loaders must not access another
+dataset to decide whether a row is valid.
 
 ## Known ambiguity and V0.1 limit
 
