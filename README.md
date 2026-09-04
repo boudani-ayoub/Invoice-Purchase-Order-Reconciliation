@@ -4,8 +4,9 @@ A local-first Python application for three-way matching between purchase orders,
 goods receipts, and supplier invoices. The project models the controls an accounts-payable
 team applies before approving an invoice for payment.
 
-> **Current status:** Phase B is complete. The project provides a validated CSV ingestion layer,
-> but reconciliation, reporting, and the CLI are intentionally reserved for later phases.
+> **Current status:** Phase C is complete. The project provides validated CSV ingestion and a
+> deterministic reconciliation engine. Human-readable reporting and the CLI are intentionally
+> reserved for later phases.
 
 ## Why this project exists
 
@@ -23,6 +24,7 @@ src/reconcile/
 ├── errors.py       # Structured source-validation issues
 ├── loaders.py      # Strict, schema-driven CSV ingestion
 ├── models.py       # Immutable domain and result objects
+├── reconciliation.py # Pure reconciliation and cumulative allocation
 └── schemas.py      # Canonical CSV contracts
 
 examples/sample_data/  # Purpose-built demonstration data
@@ -96,15 +98,15 @@ Line identity: `(supplier_id, invoice_number, line_number)`. Repeated identities
 so the reconciliation engine can classify them as `DUPLICATE_INVOICE`.
 
 Explicit line numbers avoid relying on row order and allow one document to contain the same
-item more than once. Keeping both the line reference and item code also lets validation catch
-an invoice or receipt that points to a PO line but names the wrong item.
+item more than once. Keeping both the line reference and item code also lets the reconciliation
+engine detect an invoice or receipt that points to a PO line but names the wrong item.
 
 ## V0.1 reconciliation assumptions
 
 - Quantities may be fractional and use `Decimal`; zero and negative source quantities are
   invalid rather than business events.
 - Unit prices are non-negative financial decimals. The default tolerance is a relative 2%
-  difference from the PO price; the exact comparison boundary belongs to Phase C tests.
+  difference from the PO price, and the comparison boundary is inclusive.
 - A PO line belongs to the PO supplier and currency shown on that row. All lines for a PO are
   expected to agree on those document-level values.
 - Lines sharing a supplier and invoice number form one logical invoice and are expected to
@@ -117,6 +119,8 @@ an invoice or receipt that points to a PO line but names the wrong item.
   capacity before later invoice lines, even when price, supplier, or currency needs review.
   Unknown PO/item references do not consume capacity.
 - Exact duplicate invoice-line rows are all review findings but consume capacity only once.
+  Conflicting quantities sharing an identity consume the maximum once when their target agrees.
+  A duplicate group with conflicting PO/item targets consumes no capacity.
 - Reconciliation is a current snapshot: all supplied receipts count even when their receipt
   date is later than the invoice date. An as-of-date mode is outside V0.1.
 - Missing receipt evidence means `MISSING_RECEIPT`; it is not represented as a confirmed zero
@@ -124,7 +128,8 @@ an invoice or receipt that points to a PO line but names the wrong item.
 - Price tolerance is inclusive and relative to the PO price:
   `abs(invoice price - PO price) <= PO price * tolerance`. When the PO price is zero, only a
   zero invoice price matches.
-- Disputed amounts will be rounded using `ROUND_HALF_UP` and reported separately by currency.
+- Disputed amounts are rounded using the configured precision and rounding mode, defaulting to
+  two places and `ROUND_HALF_UP`, and totals remain separated by currency.
 - In V0.1, supplier plus invoice number identifies one logical invoice. Repeated instances of
   the same invoice-line identity are preserved and marked for review. Detecting a repeated whole
   document with changed line data needs source-document identity that the current CSV does not
@@ -213,20 +218,143 @@ For example, `PO-999` is a valid non-empty PO reference in an invoice and must p
 loading even when no purchase order with that number exists. Loaders must not access another
 dataset to decide whether a row is valid.
 
-Phase B therefore does **not** make this a working reconciliation application yet. It guarantees
-that each dataset is structurally trustworthy enough for the Phase C engine to compare.
+Phase B alone does not reconcile records; it guarantees that each dataset is structurally
+trustworthy enough for the Phase C engine to compare.
 
-## Known ambiguity and V0.1 limit
+## Reconciliation
+
+The reconciliation API consumes the typed records returned by the loaders:
+
+```python
+from reconcile import reconcile
+
+results, summary = reconcile(purchase_orders, receipts, invoices)
+```
+
+It performs no file access, mutates no inputs, uses no global state, and returns the same ordered
+results for any permutation of the same validated records.
+
+### PO resolution and receipt evidence
+
+Purchase-order lines are indexed by `(po_number, line_number)`. A missing PO produces
+`UNKNOWN_PO`; a missing PO line or item mismatch produces `UNKNOWN_ITEM`. Unresolved invoice
+lines do not consume capacity.
+
+Receipts aggregate by `(po_number, po_line_number)` only when their item matches the indexed PO
+line. Unknown or mismatched receipt rows do not inflate usable receipt capacity and do not create
+invoice findings by themselves. When no valid matching receipt remains, the invoice result uses
+`received_quantity = None`, adds `MISSING_RECEIPT`, and does not also add
+`QUANTITY_EXCEEDS_RECEIPT`.
+
+### Deterministic cumulative allocation
+
+Invoice rows are processed by:
+
+```text
+invoice_date, supplier_id, invoice_number, line_number, row content
+```
+
+The content tie-break covers PO reference, item, quantity, price, and currency. Completely
+identical rows produce identical results, so their relative position has no observable effect.
+
+For a resolved line, the engine tracks prior invoice consumption against both ordered and valid
+received quantities:
+
+```text
+remaining PO       = max(ordered - previously invoiced, 0)
+remaining receipt  = max(received - previously invoiced, 0)
+supported quantity = min(current invoice, remaining PO, remaining receipt)
+```
+
+Supplier, currency, and price findings do not prevent an otherwise resolved line from consuming
+capacity. This conservative rule prevents a later invoice from reusing quantity already claimed
+by a line under review.
+
+### Duplicate identities
+
+Duplicate groups use `(supplier_id, invoice_number, line_number)` and are formed before
+allocation:
+
+- Every row in a duplicate group receives `DUPLICATE_INVOICE` and `REVIEW_REQUIRED`.
+- An exact duplicate group consumes its shared quantity once.
+- Conflicting quantities against the same PO line/item consume the maximum quantity once.
+- Conflicting PO number, PO line, or item targets make the group ambiguous; it consumes no
+  capacity and every row has zero supported quantity.
+- Other row differences, such as price, remain visible in their individual results.
+
+Every duplicate row displays its own full invoice amount as potential exposure. The summary
+counts the identity once using the maximum row exposure, avoiding both arbitrary canonical rows
+and duplicate financial totals.
+
+### Price and issue policy
+
+Price matching uses `Decimal` and the configured relative tolerance:
+
+```text
+abs(invoice price - PO price) <= PO price * tolerance
+```
+
+Only zero matches a zero PO price. The default tolerance is `0.02`, and callers may supply a
+different `ReconciliationConfig`.
+
+Issue tuples use this stable order:
+
+```text
+UNKNOWN_PO
+UNKNOWN_ITEM
+DUPLICATE_INVOICE
+SUPPLIER_MISMATCH
+CURRENCY_MISMATCH
+MISSING_RECEIPT
+QUANTITY_EXCEEDS_PO
+QUANTITY_EXCEEDS_RECEIPT
+PRICE_MISMATCH
+```
+
+A result with no issues is `MATCHED`; any issue makes it `REVIEW_REQUIRED`.
+
+### Potential disputed amount
+
+Unknown PO/item references, duplicate identities, supplier mismatches, and currency mismatches
+use the full invoice extended amount. Missing receipt evidence produces zero supported quantity
+for exposure calculation while retaining `received_quantity = None` in the result.
+
+Other review lines use one non-double-counting calculation:
+
+```text
+invoice amount   = invoiced quantity * invoice unit price
+supported amount = supported quantity * PO unit price
+disputed amount  = max(invoice amount - supported amount, 0)
+```
+
+A fully matched line, including a price difference inside tolerance, has no disputed amount.
+Amounts are rounded with `money_decimal_places` and `money_rounding`. Summary amounts are built
+from rounded line/group exposure and kept separate by invoice currency.
+
+### Summary semantics
+
+`ReconciliationSummary` counts logical invoices by `(supplier_id, invoice_number)`, input rows,
+matched and review rows, and row-level issue occurrences. Disputed currencies are sorted and
+zero-total currencies are omitted. Building the PO index and receipt totals is linear; invoice
+grouping and ordering is `O(I log I)`.
+
+## Known V0.1 limits
 
 The line-level invoice CSV has no source-system document occurrence ID. It can reliably expose
 repeated line identities, but it cannot prove that an entire invoice was imported twice when
 the second copy has changed line data. That stronger check would require an additional stable
 source identifier and is not invented in V0.1.
 
-The brief also does not define a single disputed-amount formula for lines with several issues
-(for example, both excess quantity and excess price). Phase C must define and test a
-non-double-counting policy before reporting totals; the result model intentionally reserves one
-line-level amount rather than separate amounts that could be summed incorrectly.
+Conflicting duplicate rows can be grouped by identity, but without a source-system occurrence ID
+the engine cannot determine which copy is authoritative. V0.1 applies the documented conservative
+maximum-quantity and maximum-exposure policies instead of silently selecting one.
+
+Receipt rows with unknown or mismatched PO items are excluded from valid capacity, but there is
+no receipt-level findings model. Phase D can report only the invoice-line consequences unless a
+separate source-quality report is deliberately added later.
+
+Returns, credit notes, cancellations, taxes, freight, and as-of-date reconciliation are outside
+V0.1. All supplied valid matching receipts are treated as the current evidence snapshot.
 
 ## Development setup
 
@@ -254,11 +382,11 @@ required, and a packaging smoke test confirms the installed distribution metadat
 
 - **Phase A:** complete — package, schemas, domain models, fixtures, and tooling
 - **Phase B:** complete — strict CSV loading and source validation
-- **Phase C:** deterministic reconciliation and cumulative allocation rules
+- **Phase C:** complete — deterministic reconciliation and cumulative allocation
 - **Phase D:** terminal, JSON, and CSV reporting with per-currency totals
 - **Phase E:** command-line interface
 - **Phase F:** portfolio documentation and CI polish
 
-The next implementation step is Phase C only: implement deterministic PO-line lookup, receipt
-aggregation, duplicate classification, and cumulative invoice allocation against ordered and
-received quantities, with rule-level tests before reporting or CLI work begins.
+The next implementation step is Phase D only: render existing results and summaries as readable
+terminal output plus JSON and CSV exports. Reporting must use the summary's already-deduplicated,
+per-currency totals rather than recomputing financial exposure from row results.

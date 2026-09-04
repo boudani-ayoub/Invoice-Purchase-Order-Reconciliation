@@ -13,6 +13,7 @@ from reconcile.models import (
     ReconciliationStatus,
     ReconciliationSummary,
 )
+from reconcile.reconciliation import reconcile
 
 __all__ = [
     "CurrencyAmount",
@@ -29,4 +30,5 @@ __all__ = [
     "load_goods_receipts",
     "load_invoices",
     "load_purchase_orders",
+    "reconcile",
 ]
