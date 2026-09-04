@@ -177,7 +177,8 @@ remain in source order; deterministic allocation order belongs to Phase C.
 - Every cell rejects leading or trailing whitespace. Required identifiers reject empty values;
   PO descriptions may be empty.
 - Positive integers, finite decimals, calendar dates, and currency syntax are validated before
-  a dataclass is constructed.
+  a dataclass is constructed. Decimal input uses plain unsigned base-10 notation with an optional
+  fractional part; exponents, separators, leading plus signs, `.5`, and `1.` forms are rejected.
 - Recoverable scalar errors are collected across the file and raised together as
   `CsvValidationError`. Each `CsvValidationIssue` contains its path, CSV row number, column,
   rejected value, and reason.

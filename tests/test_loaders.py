@@ -260,7 +260,10 @@ def test_invalid_positive_integers_are_rejected(tmp_path: Path, value: str) -> N
         load_purchase_orders(path)
 
 
-@pytest.mark.parametrize("value", ["0", "-1", "abc", "NaN", "Infinity"])
+@pytest.mark.parametrize(
+    "value",
+    ["0", "-1", "abc", "NaN", "Infinity", "+10", "1e2", "1_000", ".5", "1."],
+)
 def test_invalid_positive_decimals_are_rejected(tmp_path: Path, value: str) -> None:
     path = write_rows(tmp_path, PURCHASE_ORDER_SCHEMA, [VALID_PO | {"ordered_quantity": value}])
 

@@ -216,19 +216,20 @@ def _parse_value(definition: ColumnDefinition, value: str) -> object:
 
 
 def _parse_decimal(name: str, value: str, *, positive: bool) -> Decimal:
+    requirement = "greater than zero" if positive else "zero or greater"
+    if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value) is None:
+        raise ValueError(f"{name} must be a finite decimal {requirement}")
+
     try:
         parsed = Decimal(value)
     except InvalidOperation as error:
-        requirement = "greater than zero" if positive else "zero or greater"
         raise ValueError(f"{name} must be a finite decimal {requirement}") from error
 
     if not parsed.is_finite():
-        requirement = "greater than zero" if positive else "zero or greater"
         raise ValueError(f"{name} must be a finite decimal {requirement}")
 
     is_out_of_range = parsed <= 0 if positive else parsed < 0
     if is_out_of_range:
-        requirement = "greater than zero" if positive else "zero or greater"
         raise ValueError(f"{name} must be a finite decimal {requirement}")
     return parsed
 
