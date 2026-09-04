@@ -100,13 +100,44 @@ def reconcile_one(
 
 
 def test_exact_po_line_match() -> None:
-    result, _ = reconcile_one(invoice_line())
+    invoice = invoice_line()
+    result, _ = reconcile_one(invoice)
 
     assert result.status is ReconciliationStatus.MATCHED
     assert result.issues == ()
+    assert result.supplier_id == invoice.supplier_id
+    assert result.invoice_date == invoice.invoice_date
     assert result.ordered_quantity == Decimal("100")
     assert result.received_quantity == Decimal("100")
     assert result.supported_quantity == Decimal("100")
+    assert result.invoice_unit_price == invoice.unit_price
+    assert result.po_unit_price == Decimal("10")
+
+
+def test_result_identity_distinguishes_suppliers_sharing_invoice_line_number() -> None:
+    purchase_orders = (
+        po_line(po_number="PO-A", supplier_id="SUP-A"),
+        po_line(po_number="PO-B", supplier_id="SUP-B"),
+    )
+    receipts = (
+        receipt_line(receipt_id="REC-A", po_number="PO-A"),
+        receipt_line(receipt_id="REC-B", po_number="PO-B"),
+    )
+    invoices = (
+        invoice_line(invoice_number="INV-SHARED", supplier_id="SUP-A", po_number="PO-A"),
+        invoice_line(invoice_number="INV-SHARED", supplier_id="SUP-B", po_number="PO-B"),
+    )
+
+    results, _ = reconcile(purchase_orders, receipts, invoices)
+    identities = {
+        (result.supplier_id, result.invoice_number, result.invoice_line_number)
+        for result in results
+    }
+
+    assert identities == {
+        ("SUP-A", "INV-SHARED", 1),
+        ("SUP-B", "INV-SHARED", 1),
+    }
 
 
 def test_unknown_po_is_not_allocated() -> None:
@@ -116,6 +147,8 @@ def test_unknown_po_is_not_allocated() -> None:
     assert result.ordered_quantity is None
     assert result.received_quantity is None
     assert result.supported_quantity is None
+    assert result.invoice_unit_price == Decimal("10")
+    assert result.po_unit_price is None
     assert result.potential_disputed_amount == Decimal("1000.00")
 
 
@@ -124,6 +157,7 @@ def test_unknown_po_line_is_unknown_item() -> None:
 
     assert result.issues == (IssueCode.UNKNOWN_ITEM,)
     assert result.supported_quantity is None
+    assert result.po_unit_price is None
 
 
 def test_mismatched_item_is_unknown_and_does_not_consume_capacity() -> None:
@@ -401,6 +435,90 @@ def test_tolerated_price_difference_is_matched_with_no_disputed_amount() -> None
 
     assert result.status is ReconciliationStatus.MATCHED
     assert result.potential_disputed_amount == Decimal("0.00")
+
+
+@pytest.mark.parametrize(
+    ("invoice_price", "expected_disputed"),
+    [("101.50", "2030.00"), ("99", "1980.00")],
+    ids=("above-po", "below-po"),
+)
+def test_quantity_exposure_uses_tolerated_invoice_price(
+    invoice_price: str,
+    expected_disputed: str,
+) -> None:
+    result, _ = reconcile_one(
+        invoice_line(quantity="120", price=invoice_price),
+        purchase_orders=(po_line(price="100"),),
+        receipts=(receipt_line(),),
+    )
+
+    assert IssueCode.PRICE_MISMATCH not in result.issues
+    assert result.supported_quantity == Decimal("100")
+    assert result.potential_disputed_amount == Decimal(expected_disputed)
+
+
+def test_receipt_limited_exposure_uses_tolerated_invoice_price() -> None:
+    result, _ = reconcile_one(
+        invoice_line(price="101"),
+        purchase_orders=(po_line(price="100"),),
+        receipts=(receipt_line(quantity="80"),),
+    )
+
+    assert result.issues == (IssueCode.QUANTITY_EXCEEDS_RECEIPT,)
+    assert result.supported_quantity == Decimal("80")
+    assert result.potential_disputed_amount == Decimal("2020.00")
+
+
+def test_cumulative_exposure_uses_tolerated_invoice_price() -> None:
+    invoices = (
+        invoice_line(invoice_number="INV-A", quantity="70", price="101"),
+        invoice_line(
+            invoice_number="INV-B",
+            invoice_date=date(2026, 1, 4),
+            quantity="50",
+            price="101",
+        ),
+    )
+
+    results, _ = reconcile(
+        (po_line(price="100"),),
+        (receipt_line(),),
+        invoices,
+    )
+
+    assert results[0].supported_quantity == Decimal("70")
+    assert results[0].potential_disputed_amount == Decimal("0.00")
+    assert results[1].previously_invoiced_quantity == Decimal("70")
+    assert results[1].supported_quantity == Decimal("30")
+    assert results[1].potential_disputed_amount == Decimal("2020.00")
+
+
+def test_quantity_and_price_mismatch_use_po_price_support_baseline() -> None:
+    result, _ = reconcile_one(
+        invoice_line(quantity="120", price="120"),
+        purchase_orders=(po_line(price="100"),),
+        receipts=(receipt_line(),),
+    )
+
+    assert result.issues == (
+        IssueCode.QUANTITY_EXCEEDS_PO,
+        IssueCode.QUANTITY_EXCEEDS_RECEIPT,
+        IssueCode.PRICE_MISMATCH,
+    )
+    assert result.supported_quantity == Decimal("100")
+    assert result.potential_disputed_amount == Decimal("4400.00")
+
+
+def test_missing_receipt_with_tolerated_price_remains_full_exposure() -> None:
+    result, _ = reconcile_one(
+        invoice_line(price="101"),
+        purchase_orders=(po_line(price="100"),),
+        receipts=(),
+    )
+
+    assert result.issues == (IssueCode.MISSING_RECEIPT,)
+    assert result.supported_quantity == Decimal("0")
+    assert result.potential_disputed_amount == Decimal("10100.00")
 
 
 def test_disputed_amount_uses_configured_rounding() -> None:

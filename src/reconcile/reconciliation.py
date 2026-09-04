@@ -177,8 +177,10 @@ def _reconcile_invoice_line(
         issues.add(reference_issue)
         ordered_issues = _order_issues(issues)
         return ReconciliationResult(
+            supplier_id=invoice.supplier_id,
             invoice_number=invoice.invoice_number,
             invoice_line_number=invoice.line_number,
+            invoice_date=invoice.invoice_date,
             po_number=invoice.po_number,
             po_line_number=invoice.po_line_number,
             item_code=invoice.item_code,
@@ -189,6 +191,8 @@ def _reconcile_invoice_line(
             previously_invoiced_quantity=Decimal(0),
             current_invoiced_quantity=invoice.invoiced_quantity,
             supported_quantity=None,
+            invoice_unit_price=invoice.unit_price,
+            po_unit_price=None,
             potential_disputed_amount=_round_money(
                 invoice.invoiced_quantity * invoice.unit_price,
                 config,
@@ -236,8 +240,10 @@ def _reconcile_invoice_line(
     )
 
     return ReconciliationResult(
+        supplier_id=invoice.supplier_id,
         invoice_number=invoice.invoice_number,
         invoice_line_number=invoice.line_number,
+        invoice_date=invoice.invoice_date,
         po_number=invoice.po_number,
         po_line_number=invoice.po_line_number,
         item_code=invoice.item_code,
@@ -248,6 +254,8 @@ def _reconcile_invoice_line(
         previously_invoiced_quantity=previously_invoiced,
         current_invoiced_quantity=invoice.invoiced_quantity,
         supported_quantity=supported_quantity,
+        invoice_unit_price=invoice.unit_price,
+        po_unit_price=po.unit_price,
         potential_disputed_amount=disputed_amount,
         currency=invoice.currency,
     )
@@ -291,7 +299,10 @@ def _disputed_amount(
     if FULL_EXPOSURE_ISSUES.intersection(issues):
         return _round_money(invoice_amount, config)
 
-    supported_amount = supported_quantity * po.unit_price
+    accepted_unit_price = (
+        po.unit_price if IssueCode.PRICE_MISMATCH in issues else invoice.unit_price
+    )
+    supported_amount = supported_quantity * accepted_unit_price
     return _round_money(max(invoice_amount - supported_amount, Decimal(0)), config)
 
 

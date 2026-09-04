@@ -63,8 +63,10 @@ class InvoiceLine:
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationResult:
+    supplier_id: str
     invoice_number: str
     invoice_line_number: int
+    invoice_date: date
     po_number: str
     po_line_number: int
     item_code: str
@@ -75,6 +77,8 @@ class ReconciliationResult:
     previously_invoiced_quantity: Decimal
     current_invoiced_quantity: Decimal
     supported_quantity: Decimal | None
+    invoice_unit_price: Decimal
+    po_unit_price: Decimal | None
     potential_disputed_amount: Decimal
     currency: str
 
