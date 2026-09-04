@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import reconcile.cli as cli_module
 from reconcile import (
     load_goods_receipts,
     load_invoices,
@@ -378,6 +379,63 @@ def test_csv_force_rejects_report_directory_before_writing_other_file(
     assert summary_path.is_dir()
     assert output.out == ""
     assert "expected report file path" in output.err
+
+
+def test_force_preserves_existing_report_when_temporary_write_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "report.json"
+    output_path.write_text("original", encoding="utf-8")
+
+    def fail_write(path: Path, content: str) -> Path:
+        raise OSError("simulated temporary write failure")
+
+    monkeypatch.setattr(cli_module, "_write_temporary", fail_write)
+
+    exit_code = main(sample_args("--format", "json", "--output", str(output_path), "--force"))
+
+    output = capsys.readouterr()
+    assert exit_code == 4
+    assert output_path.read_text(encoding="utf-8") == "original"
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert output.out == ""
+    assert "simulated temporary write failure" in output.err
+
+
+def test_csv_force_preserves_both_reports_when_second_temporary_write_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_dir = tmp_path / "reports"
+    output_dir.mkdir()
+    result_path = output_dir / "reconciliation-results.csv"
+    summary_path = output_dir / "reconciliation-summary.csv"
+    result_path.write_text("original results", encoding="utf-8")
+    summary_path.write_text("original summary", encoding="utf-8")
+    original_write = cli_module._write_temporary
+    call_count = 0
+
+    def fail_second_write(path: Path, content: str) -> Path:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise OSError("simulated second temporary write failure")
+        return original_write(path, content)
+
+    monkeypatch.setattr(cli_module, "_write_temporary", fail_second_write)
+
+    exit_code = main(sample_args("--format", "csv", "--output", str(output_dir), "--force"))
+
+    output = capsys.readouterr()
+    assert exit_code == 4
+    assert result_path.read_text(encoding="utf-8") == "original results"
+    assert summary_path.read_text(encoding="utf-8") == "original summary"
+    assert list(output_dir.glob("*.tmp")) == []
+    assert output.out == ""
+    assert "simulated second temporary write failure" in output.err
 
 
 def test_module_entry_point_help_smoke() -> None:

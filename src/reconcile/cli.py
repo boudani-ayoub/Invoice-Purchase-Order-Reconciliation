@@ -1,9 +1,11 @@
 """Command-line orchestration for the reconciliation pipeline."""
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from reconcile.errors import CsvValidationError
 from reconcile.loaders import load_goods_receipts, load_invoices, load_purchase_orders
@@ -165,6 +167,19 @@ def _write_csv_outputs(
     force: bool,
 ) -> None:
     result_path.parent.mkdir(parents=True, exist_ok=True)
+    if force:
+        result_temporary: Path | None = None
+        summary_temporary: Path | None = None
+        try:
+            result_temporary = _write_temporary(result_path, result_content)
+            summary_temporary = _write_temporary(summary_path, summary_content)
+            result_temporary.replace(result_path)
+            summary_temporary.replace(summary_path)
+        finally:
+            _discard_temporary(result_temporary)
+            _discard_temporary(summary_temporary)
+        return
+
     _write_text(result_path, result_content, force=force, create_parent=False)
     _write_text(summary_path, summary_content, force=force, create_parent=False)
 
@@ -178,9 +193,47 @@ def _write_text(
 ) -> None:
     if create_parent:
         path.parent.mkdir(parents=True, exist_ok=True)
-    mode = "w" if force else "x"
+    if force:
+        temporary_path = _write_temporary(path, content)
+        try:
+            temporary_path.replace(path)
+        finally:
+            _discard_temporary(temporary_path)
+        return
+
     try:
-        with path.open(mode, encoding="utf-8", newline="") as output_file:
+        with path.open("x", encoding="utf-8", newline="") as output_file:
             output_file.write(content)
     except FileExistsError as error:
         raise _OutputError(f"file already exists: {path}; use --force to replace it") from error
+
+
+def _write_temporary(path: Path, content: str) -> Path:
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        return temporary_path
+    except BaseException:
+        _discard_temporary(temporary_path)
+        raise
+
+
+def _discard_temporary(path: Path | None) -> None:
+    if path is None:
+        return
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
