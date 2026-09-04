@@ -4,9 +4,9 @@ A local-first Python application for three-way matching between purchase orders,
 goods receipts, and supplier invoices. The project models the controls an accounts-payable
 team applies before approving an invoice for payment.
 
-> **Current status:** Phase C.1 is complete. The project provides validated CSV ingestion and a
-> deterministic reconciliation engine with report-ready result records. Human-readable reporting
-> and the CLI are intentionally reserved for later phases.
+> **Current status:** Phase D is complete. The project provides validated CSV ingestion,
+> deterministic reconciliation, and pure terminal, JSON, and CSV reporting. Command-line
+> integration is intentionally reserved for Phase E.
 
 ## Why this project exists
 
@@ -25,6 +25,7 @@ src/reconcile/
 ├── loaders.py      # Strict, schema-driven CSV ingestion
 ├── models.py       # Immutable domain and result objects
 ├── reconciliation.py # Pure reconciliation and cumulative allocation
+├── reporting.py    # Deterministic terminal, JSON, and CSV rendering
 └── schemas.py      # Canonical CSV contracts
 
 examples/sample_data/  # Purpose-built demonstration data
@@ -364,6 +365,90 @@ matched and review rows, and row-level issue occurrences. Disputed currencies ar
 zero-total currencies are omitted. Building the PO index and receipt totals is linear; invoice
 grouping and ordering is `O(I log I)`.
 
+## Reporting
+
+Phase D exposes four pure rendering functions:
+
+```python
+from reconcile import (
+    render_csv_results,
+    render_csv_summary,
+    render_json_report,
+    render_terminal_report,
+)
+
+terminal_text = render_terminal_report(results, summary)
+json_text = render_json_report(results, summary)
+result_csv = render_csv_results(results)
+summary_csv = render_csv_summary(summary)
+```
+
+They accept existing domain results and summaries, return strings, perform no file access, and do
+not repeat reconciliation logic. Callers decide whether and where those strings are written.
+
+### Serialization contract
+
+- Dates use ISO `YYYY-MM-DD` strings.
+- Every `Decimal` is rendered directly as a base-10 string without float conversion. Quantities
+  and unit prices retain their meaningful precision; already-quantized disputed amounts retain
+  their money precision.
+- Status and issue enums use their stable string values.
+- JSON uses `null` for missing optional values and arrays of strings for issues.
+- Detailed CSV uses an empty cell for missing optional values and joins multiple issues with `|`.
+- Every format preserves the incoming result order. JSON object fields and summary rows use an
+  explicitly defined order, and every rendered string ends with `\n`.
+
+The JSON report is one object with authoritative summary data followed by detailed results:
+
+```json
+{
+  "summary": {
+    "invoices_processed": 15,
+    "disputed_amounts": {"MAD": "10199.00"}
+  },
+  "results": [
+    {
+      "supplier_id": "SUP-ALPHA",
+      "invoice_date": "2026-01-10",
+      "status": "MATCHED",
+      "issues": [],
+      "invoice_unit_price": "250.00",
+      "po_unit_price": "250.00"
+    }
+  ]
+}
+```
+
+The abbreviated example shows value types; the actual result objects contain every documented
+`ReconciliationResult` field in model order.
+
+Detailed CSV contains one result per row with this stable header:
+
+```text
+supplier_id,invoice_number,invoice_line_number,invoice_date,po_number,po_line_number,item_code,status,issues,ordered_quantity,received_quantity,previously_invoiced_quantity,current_invoiced_quantity,supported_quantity,invoice_unit_price,po_unit_price,potential_disputed_amount,currency
+```
+
+Summary CSV is a separate tidy table rather than fake rows appended to detailed results:
+
+```text
+category,key,value
+metric,invoices_processed,15
+issue,UNKNOWN_PO,1
+disputed_amount,MAD,10199.00
+```
+
+Metrics come first, followed by issues in reconciliation policy order and disputed currencies in
+summary order. The terminal report shows counts, issue totals, authoritative disputed totals, and
+actionable detail only for review-required lines. It uses plain ASCII with no color, terminal
+width detection, or third-party formatting dependency.
+
+### Authoritative totals
+
+Row results explain why individual records need review. `ReconciliationSummary.disputed_amounts`
+is the authoritative financial aggregate in every report. Renderers never sum row-level disputed
+amounts because duplicate rows intentionally display their own exposure while the summary counts
+each duplicate identity group only once.
+
 ## Known V0.1 limits
 
 The line-level invoice CSV has no source-system document occurrence ID. It can reliably expose
@@ -376,8 +461,8 @@ the engine cannot determine which copy is authoritative. V0.1 applies the docume
 maximum-quantity and maximum-exposure policies instead of silently selecting one.
 
 Receipt rows with unknown or mismatched PO items are excluded from valid capacity, but there is
-no receipt-level findings model. Phase D can report only the invoice-line consequences unless a
-separate source-quality report is deliberately added later.
+no receipt-level findings model. Reports expose only the invoice-line consequences; a separate
+source-quality contract would need to be designed deliberately in a later phase.
 
 Returns, credit notes, cancellations, taxes, freight, and as-of-date reconciliation are outside
 V0.1. All supplied valid matching receipts are treated as the current evidence snapshot.
@@ -410,11 +495,11 @@ required, and a packaging smoke test confirms the installed distribution metadat
 - **Phase B:** complete — strict CSV loading and source validation
 - **Phase C:** complete — deterministic reconciliation and cumulative allocation
 - **Phase C.1:** complete — report-ready results and corrected tolerated-price exposure
-- **Phase D:** terminal, JSON, and CSV reporting with per-currency totals
+- **Phase D:** complete — terminal, JSON, and CSV reporting with authoritative totals
 - **Phase E:** command-line interface
 - **Phase F:** portfolio documentation and CI polish
 
-The next implementation step is Phase D only: define report-schema tests, then render existing
-results and summaries as readable terminal output plus JSON and CSV exports. Reporting must use
-the summary's already-deduplicated, per-currency totals rather than recomputing financial exposure
-from row results.
+The next implementation step is Phase E only: define CLI behavior and exit-code tests, then wire
+input paths and output destinations to the existing loaders, reconciliation engine, and pure
+renderers. Phase E should orchestrate these APIs without duplicating their validation, business,
+or serialization rules.
