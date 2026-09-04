@@ -48,8 +48,9 @@ Only official `actions/checkout@v7` and `actions/setup-python@v7` actions are us
 tags allow compatible maintenance updates while Dependabot reviews action-version changes weekly.
 The job has read-only repository-content permission.
 
-The workflow has been created and reviewed locally but has not been remotely executed because
-Phase F was not pushed as part of this task.
+The Phase F commits were pushed to `main`. GitHub Actions run
+[`33930885216`](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/33930885216)
+completed successfully, including both `Python 3.11` and `Python 3.12` matrix jobs.
 
 ## Security review
 
@@ -137,12 +138,13 @@ Verification used Python 3.12.7 from the project virtual environment:
 | installed editable sample JSON-file workflow | Passed and parsed successfully |
 | local absolute-path regression | Passed |
 | credential/private-key filename and content-pattern scan | No findings |
+| GitHub Actions CI | Passed: Python 3.11 and Python 3.12 |
 | `git diff --check` | Passed |
 | `git diff --cached --check` | Passed |
 
-Python 3.11 was not installed on the local Windows host. Its clean-runner verification is defined
-in the CI matrix and must be confirmed by GitHub Actions after a future push; this report does not
-claim an unexecuted remote result.
+Python 3.11 was not installed on the local Windows host, so its verification came from the clean
+GitHub-hosted matrix job. Both supported Python versions passed the same installed-package test,
+lint, format, dependency, CLI, sample, and build workflow.
 
 The first sandboxed package-build attempt could not download isolated build requirements, and the
 build frontend exposed a localized output-decoding error while reporting that network denial. The
@@ -183,7 +185,6 @@ USD=75.00
 - Machine-readable CSV does not escape spreadsheet formula characters.
 - Non-forced interrupted creation may leave a partial new file.
 - A forced two-file CSV replacement is staged but not transactional across both final paths.
-- Remote Python 3.11/3.12 CI status remains unknown until the workflow is pushed and runs.
 - Web UI, HTTP API, uploads, database, users, authentication, and saved history are separate work.
 
 ## Final core-tool status
