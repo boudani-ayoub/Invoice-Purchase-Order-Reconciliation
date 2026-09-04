@@ -4,9 +4,9 @@ A local-first Python application for three-way matching between purchase orders,
 goods receipts, and supplier invoices. The project models the controls an accounts-payable
 team applies before approving an invoice for payment.
 
-> **Current status:** Phase D is complete. The project provides validated CSV ingestion,
-> deterministic reconciliation, and pure terminal, JSON, and CSV reporting. Command-line
-> integration is intentionally reserved for Phase E.
+> **Current status:** Phase E is complete. The project provides validated CSV ingestion,
+> deterministic reconciliation, terminal/JSON/CSV reporting, and an installable command-line
+> workflow. Phase F is reserved for CI and portfolio documentation polish.
 
 ## Why this project exists
 
@@ -20,6 +20,8 @@ decisions inside data-manipulation code.
 
 ```text
 src/reconcile/
+├── __main__.py     # python -m reconcile entry point
+├── cli.py          # Argument parsing and workflow orchestration
 ├── config.py       # Business policy configuration
 ├── errors.py       # Structured source-validation issues
 ├── loaders.py      # Strict, schema-driven CSV ingestion
@@ -449,6 +451,89 @@ is the authoritative financial aggregate in every report. Renderers never sum ro
 amounts because duplicate rows intentionally display their own exposure while the summary counts
 each duplicate identity group only once.
 
+## Command-line interface
+
+Install the project to create the `reconcile` command:
+
+```bash
+python -m pip install -e .
+```
+
+The same interface is available through `python -m reconcile`.
+
+### Quick start
+
+The three input paths are required. Terminal reporting is the default and writes to stdout:
+
+```bash
+reconcile \
+  --purchase-orders examples/sample_data/purchase_orders.csv \
+  --receipts examples/sample_data/goods_receipts.csv \
+  --invoices examples/sample_data/invoices.csv
+```
+
+The command contract is:
+
+```text
+usage: reconcile [-h] --purchase-orders PATH --receipts PATH --invoices PATH
+                 [--format {terminal,json,csv}] [--output PATH] [--force]
+```
+
+Terminal and JSON reports go to stdout unless `--output` names an exact file:
+
+```bash
+reconcile \
+  --purchase-orders purchase_orders.csv \
+  --receipts goods_receipts.csv \
+  --invoices invoices.csv \
+  --format json
+
+reconcile \
+  --purchase-orders purchase_orders.csv \
+  --receipts goods_receipts.csv \
+  --invoices invoices.csv \
+  --format json \
+  --output reports/reconciliation.json
+```
+
+CSV mode requires an explicit output directory because it preserves the two Phase D tables:
+
+```bash
+reconcile \
+  --purchase-orders purchase_orders.csv \
+  --receipts goods_receipts.csv \
+  --invoices invoices.csv \
+  --format csv \
+  --output reports
+```
+
+This creates exactly:
+
+```text
+reports/
+├── reconciliation-results.csv
+└── reconciliation-summary.csv
+```
+
+Missing parent directories are created. Existing report files are refused unless `--force` is
+present. CSV mode checks both destinations before writing either file, so an existing summary
+cannot leave behind a newly written results file. Formats are never inferred from extensions.
+
+Successful stdout mode emits only the report. Successful file mode emits a concise destination
+confirmation. Usage, source-validation, and output errors go to stderr.
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | Successful reconciliation and reporting |
+| `1` | Unexpected unhandled application failure |
+| `2` | CLI usage or argument error |
+| `3` | Input CSV or source-validation error |
+| `4` | Output path, overwrite, or filesystem error |
+
+The V0.1 CLI deliberately has no stdin input, directory discovery, interactive prompts,
+configuration files, environment configuration, or business-policy options. It uses the existing
+`ReconciliationConfig` defaults and keeps the Python API available for programmatic use.
+
 ## Known V0.1 limits
 
 The line-level invoice CSV has no source-system document occurrence ID. It can reliably expose
@@ -496,10 +581,9 @@ required, and a packaging smoke test confirms the installed distribution metadat
 - **Phase C:** complete — deterministic reconciliation and cumulative allocation
 - **Phase C.1:** complete — report-ready results and corrected tolerated-price exposure
 - **Phase D:** complete — terminal, JSON, and CSV reporting with authoritative totals
-- **Phase E:** command-line interface
+- **Phase E:** complete — installable CLI with safe file-output behavior
 - **Phase F:** portfolio documentation and CI polish
 
-The next implementation step is Phase E only: define CLI behavior and exit-code tests, then wire
-input paths and output destinations to the existing loaders, reconciliation engine, and pure
-renderers. Phase E should orchestrate these APIs without duplicating their validation, business,
-or serialization rules.
+The next implementation step is Phase F only: add a focused CI workflow for supported Python
+versions, improve the portfolio-facing project overview, and document reproducible demonstration
+commands. Phase F should preserve the accepted domain, reporting, and CLI contracts.
