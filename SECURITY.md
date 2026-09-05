@@ -2,9 +2,9 @@
 
 ## Scope
 
-V0.1 is a local batch-processing command-line tool. It reads three CSV files, performs a
-deterministic reconciliation, and writes terminal, JSON, or CSV reports. It has no network
-service, authentication boundary, database, or remote code execution feature.
+The project contains the V0.1 local CLI and an optional stateless FastAPI adapter. Both read three
+CSV inputs, run the same deterministic reconciliation package, and return terminal, JSON, or CSV
+reports. Neither executes input content or persists reconciliation data.
 
 The process can read and write any path permitted to the operating-system user who runs it. Run
 it with ordinary user privileges and review paths before using `--force`.
@@ -32,12 +32,33 @@ it with ordinary user privileges and review paths before using `--force`.
 - An interrupted non-forced write can leave a newly created partial file. The tool never silently
   overwrites that file on the next run.
 
+## Web API boundary
+
+- Each request uses a unique standard-library temporary directory with fixed internal filenames.
+  Client filenames never determine server paths, and request files are removed on success, input
+  validation failure, size failure, and unexpected application failure.
+- `UploadFile` streams data to the controlled files in 64 KiB chunks. Each upload is limited to
+  10 MiB and produces HTTP 413 when exceeded. The multipart server may receive or spool request
+  data before the endpoint applies this limit, so a deployment still needs request-size and timeout
+  controls at the ASGI server or reverse proxy.
+- MIME types and filename extensions are not security checks. The existing strict UTF-8 CSV
+  parser and schema validation remain authoritative. Structured validation failures return HTTP
+  422 without exposing temporary server paths.
+- Unexpected failures return a generic HTTP 500 payload. Detailed exceptions remain in server
+  logs rather than HTTP responses.
+- The API has no database, upload storage, result history, authentication, authorization, or CORS
+  middleware. It is intended for local development and trusted environments only.
+- Do not expose the MVP anonymously to the public internet with sensitive financial data. A
+  production deployment requires HTTPS, explicit trusted origins, authentication and
+  authorization, deployment-layer request limits, timeouts, logging controls, and a new threat
+  review.
+
 ## Dependencies and data
 
-The application has no third-party runtime dependencies. Development tools are isolated in the
-`dev` optional dependency group and monitored weekly by Dependabot, along with GitHub Actions.
-The files under `examples/sample_data` are deterministic synthetic fixtures, not customer or
-supplier records.
+The core application has no third-party runtime dependencies. FastAPI, Uvicorn, and multipart
+parsing are isolated in the optional `web` dependency group; HTTP testing tools remain in `dev`.
+Dependabot monitors these packages and GitHub Actions weekly. The files under
+`examples/sample_data` are deterministic synthetic fixtures, not customer or supplier records.
 
 ## Reporting a vulnerability
 
@@ -45,6 +66,5 @@ Avoid including sensitive data in a public issue. Use the repository's private v
 reporting option under the GitHub **Security** tab when available. Otherwise, contact the
 repository owner through the GitHub profile to agree on a private reporting channel.
 
-A future web deployment will introduce uploads, authentication, authorization, persistence, and
-network boundaries. It will require a separate threat model and controls; this policy does not
-claim to cover that future system.
+A future public deployment with authentication, authorization, and persistence will require a
+separate threat model. This policy does not claim production readiness or compliance certification.

@@ -5,8 +5,8 @@
 A deterministic three-way matching tool that validates supplier invoices against purchase
 orders and goods receipts before payment.
 
-**Status:** V0.1 core CLI complete. It includes strict CSV validation, cumulative reconciliation,
-terminal/JSON/CSV reporting, packaging checks, and Python 3.11/3.12 CI.
+**Status:** The V0.1 core CLI is complete. Web Phase 1 adds an optional stateless FastAPI adapter
+without changing the accepted reconciliation or reporting contracts.
 
 ## Why this exists
 
@@ -32,19 +32,13 @@ Result: review required
 ## Architecture
 
 ```text
-CSV inputs
-   ↓
-strict schema and value validation
-   ↓
-typed immutable domain models
-   ↓
-deterministic reconciliation and cumulative allocation
-   ↓
-authoritative summary + detailed result rows
-   ↓
-terminal / JSON / CSV renderers
-   ↓
-CLI and explicit file-output boundary
+CSV inputs → strict validation → typed models → reconciliation → authoritative results
+                                                        │
+                              ┌─────────────────────────┴─────────────────────────┐
+                              ↓                                                   ↓
+                    CLI + file outputs                              FastAPI JSON adapter
+                                                                                ↑
+                                                                         future frontend
 ```
 
 Validation, reconciliation, rendering, and filesystem orchestration remain separate. The core
@@ -168,6 +162,45 @@ directory. Existing reports are refused by default; `--force` explicitly permits
 | `3` | Input or CSV validation error |
 | `4` | Expected output/filesystem error |
 
+## Web API — MVP
+
+The optional FastAPI layer exposes the same engine and Phase D JSON representation over HTTP. The
+CLI remains available without installing any web dependencies.
+
+Install the web and test extras, then start the development server:
+
+```bash
+python -m pip install -e ".[dev,web]"
+python -m uvicorn reconcile.web.app:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000/docs` for the generated OpenAPI interface. The MVP provides:
+
+```text
+GET  /health
+POST /api/v1/reconcile
+```
+
+Submit the three required multipart fields:
+
+```bash
+curl -X POST \
+  -F "purchase_orders=@examples/sample_data/purchase_orders.csv" \
+  -F "receipts=@examples/sample_data/goods_receipts.csv" \
+  -F "invoices=@examples/sample_data/invoices.csv" \
+  http://127.0.0.1:8000/api/v1/reconcile
+```
+
+Each upload has a 10 MiB application limit. Files are streamed into fixed names inside a unique
+request directory, reconciled, and removed before the response completes. Client filenames,
+extensions, and MIME types are not trusted; the existing strict CSV loaders remain authoritative.
+The service stores no uploads or results.
+
+Invalid CSV returns a structured `422` response, oversized files return `413`, and missing
+multipart fields use FastAPI's `422` request validation. This MVP has no authentication,
+persistence, or CORS configuration and must not be exposed anonymously to the public internet with
+sensitive financial data.
+
 ## Input contract
 
 All inputs are UTF-8 CSV files with an exact header and at least one data row:
@@ -204,19 +237,20 @@ wrong-width rows, and inconsistent document fields are rejected rather than sile
 
 - Python 3.11+
 - `dataclasses`, `Decimal`, `csv`, `json`, `pathlib`, and `argparse`
+- FastAPI and Uvicorn as optional web dependencies
 - pytest and Ruff
 - setuptools with `pyproject.toml`
 - GitHub Actions
 
-V0.1 deliberately uses only the Python standard library at runtime. The local workflow does not
-need Pandas, NumPy, a database, or a web framework.
+The core CLI deliberately uses only the Python standard library at runtime. FastAPI, Uvicorn, and
+multipart parsing are isolated in the `web` extra; the local CLI does not require them.
 
 ## Testing, CI, and packaging
 
 Run the same checks used by CI:
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,web]"
 python -m pytest -vv
 python -m ruff check .
 python -m ruff format --check .
@@ -226,25 +260,25 @@ python -m reconcile --help
 reconcile --help
 ```
 
-The workflow in `.github/workflows/ci.yml` performs these checks on Python 3.11 and 3.12 after
-installing the project. It also runs the sample reconciliation and installs the built wheel in a
-clean environment. No `PYTHONPATH` shortcut is used. Dependabot checks development dependencies
-and official GitHub Actions weekly.
+The workflow in `.github/workflows/ci.yml` performs the complete core and web suite on Python 3.11
+and 3.12 after installing both extras. It also runs the CLI sample and installs the built wheel
+without dependencies in a clean environment, proving core imports and the CLI remain independent
+of FastAPI. No `PYTHONPATH` shortcut is used. Dependabot checks dependencies and official GitHub
+Actions weekly.
 
 Official actions are referenced by their stable major versions so compatible maintenance updates
 arrive automatically; the workflow grants only read access to repository contents.
 
 ## Security
 
-This is a local batch tool with no network listener or runtime dependencies. CSV content is data,
-never shell input or executable code. Machine-readable CSV output preserves source identifiers;
-spreadsheet software may interpret cells beginning with formula characters. Review
-[`SECURITY.md`](SECURITY.md) before opening untrusted exports in a spreadsheet or processing very
-large files.
+CSV content is data, never shell input or executable code. The optional API adds a network boundary
+with upload limits and temporary request storage, but intentionally has no authentication yet.
+Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deploying the service.
 
 ## Known limits
 
-- Local batch workflow only; no web UI, API, database, authentication, or saved run history.
+- No web UI, database, authentication, authorization, or saved run history.
+- The API is a local/development MVP, not a public production financial service.
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
 - No receipt-level findings model.
 - No proof of a repeated whole document without a source occurrence identifier.
@@ -253,28 +287,29 @@ large files.
 - Two forced CSV replacements are staged together but are not one transactional operation.
 - This is a focused V0.1 control engine, not production ERP software.
 
-## Future web application
+## Next web phase
 
-Web delivery is a separate project layer, not part of this core release:
+Web Phase 2 can add a frontend while continuing to reuse the same backend and core package:
 
 ```text
 React / Next.js frontend
           ↓
-       FastAPI
+existing FastAPI adapter
           ↓
 existing reconciliation package
           ↓
 PostgreSQL for saved runs, users, and history
 ```
 
-That phase will need a separate upload policy, authentication/authorization design, threat model,
-and persistence model. None of those components is implemented here.
+The next phase should focus on upload UX, validation feedback, and result presentation. Public
+deployment, authentication, authorization, and persistence remain separate later concerns.
 
 ## Project history
 
 The implementation decisions and verification evidence are preserved in
 [`docs/`](docs), from [`Phase A`](docs/phase-a-report.md) through
-[`Phase F`](docs/phase-f-report.md).
+[`Phase F`](docs/phase-f-report.md), followed by the separate
+[`Web Phase 1`](docs/web-phase-1-report.md).
 
 ## License
 
