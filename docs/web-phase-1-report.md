@@ -245,8 +245,8 @@ Verification used Python 3.12.7:
 | `git diff --cached --check` | Passed |
 
 The GitHub workflow now installs `.[dev,web]` on both Python 3.11 and 3.12, while its clean wheel
-smoke remains dependency-free and explicitly imports the core package. These changes have not been
-pushed, so remote Web Phase 1 CI has not run.
+smoke remains dependency-free and explicitly imports the core package. Web Phase 1 was pushed to
+`main`, and GitHub Actions run `33991327333` completed successfully for both Python versions.
 
 ## Manual backend verification
 
