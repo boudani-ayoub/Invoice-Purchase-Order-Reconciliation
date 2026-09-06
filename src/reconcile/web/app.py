@@ -2,7 +2,8 @@
 
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -22,6 +23,16 @@ from reconcile import (
     reconcile,
     render_json_report,
 )
+from reconcile.analysis.models import AnalysisMode
+from reconcile.web.reports import (
+    InvoicePoReport,
+    InvoiceReceiptReport,
+    PoReceiptReport,
+    ThreeWayReport,
+    render_analysis,
+)
+
+ANALYSES_PATH = "/api/v1/analyses"
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 64 * 1024
@@ -108,48 +119,107 @@ def create_app(
             "receipts": receipts,
             "invoices": invoices,
         }
-        try:
-            with _request_directory() as directory:
-                paths: dict[str, Path] = {}
-                try:
-                    for field, upload in uploads.items():
-                        path = Path(directory) / _INTERNAL_FILENAMES[field]
-                        await _write_upload(
-                            upload,
-                            path,
-                            field=field,
-                            max_bytes=max_upload_bytes,
-                        )
-                        paths[field] = path
-                except _FileTooLargeError as error:
-                    return JSONResponse(
-                        status_code=413,
-                        content={
-                            "error": "file_too_large",
-                            "file": error.field,
-                            "max_bytes": error.max_bytes,
-                        },
-                    )
+        return await _process_uploads(
+            uploads,
+            lambda paths: _render_reconciliation(
+                paths["purchase_orders"],
+                paths["receipts"],
+                paths["invoices"],
+            ),
+            max_upload_bytes=max_upload_bytes,
+        )
 
-                try:
-                    report = await run_in_threadpool(
-                        _render_reconciliation,
-                        paths["purchase_orders"],
-                        paths["receipts"],
-                        paths["invoices"],
-                    )
-                except CsvValidationError as error:
-                    return JSONResponse(
-                        status_code=422,
-                        content=_validation_error_response(error),
-                    )
+    @application.post(f"{ANALYSES_PATH}/{AnalysisMode.INVOICE_PO}", response_model=InvoicePoReport)
+    async def invoice_po_uploads(
+        purchase_orders: Annotated[UploadFile, File()],
+        invoices: Annotated[UploadFile, File()],
+    ) -> Response:
+        return await _process_uploads(
+            {"purchase_orders": purchase_orders, "invoices": invoices},
+            partial(render_analysis, AnalysisMode.INVOICE_PO),
+            max_upload_bytes=max_upload_bytes,
+        )
 
-                return Response(content=report, media_type="application/json")
-        finally:
-            for upload in uploads.values():
-                await upload.close()
+    @application.post(
+        f"{ANALYSES_PATH}/{AnalysisMode.INVOICE_RECEIPT}", response_model=InvoiceReceiptReport
+    )
+    async def invoice_receipt_uploads(
+        receipts: Annotated[UploadFile, File()],
+        invoices: Annotated[UploadFile, File()],
+    ) -> Response:
+        return await _process_uploads(
+            {"receipts": receipts, "invoices": invoices},
+            partial(render_analysis, AnalysisMode.INVOICE_RECEIPT),
+            max_upload_bytes=max_upload_bytes,
+        )
+
+    @application.post(f"{ANALYSES_PATH}/{AnalysisMode.PO_RECEIPT}", response_model=PoReceiptReport)
+    async def po_receipt_uploads(
+        purchase_orders: Annotated[UploadFile, File()],
+        receipts: Annotated[UploadFile, File()],
+    ) -> Response:
+        return await _process_uploads(
+            {"purchase_orders": purchase_orders, "receipts": receipts},
+            partial(render_analysis, AnalysisMode.PO_RECEIPT),
+            max_upload_bytes=max_upload_bytes,
+        )
+
+    @application.post(f"{ANALYSES_PATH}/{AnalysisMode.THREE_WAY}", response_model=ThreeWayReport)
+    async def three_way_uploads(
+        purchase_orders: Annotated[UploadFile, File()],
+        receipts: Annotated[UploadFile, File()],
+        invoices: Annotated[UploadFile, File()],
+    ) -> Response:
+        return await _process_uploads(
+            {"purchase_orders": purchase_orders, "receipts": receipts, "invoices": invoices},
+            partial(render_analysis, AnalysisMode.THREE_WAY),
+            max_upload_bytes=max_upload_bytes,
+        )
 
     return application
+
+
+async def _process_uploads(
+    uploads: dict[str, UploadFile],
+    renderer: Callable[[dict[str, Path]], str],
+    *,
+    max_upload_bytes: int,
+) -> Response:
+    try:
+        with _request_directory() as directory:
+            paths: dict[str, Path] = {}
+            try:
+                for field, upload in uploads.items():
+                    path = Path(directory) / _INTERNAL_FILENAMES[field]
+                    await _write_upload(
+                        upload,
+                        path,
+                        field=field,
+                        max_bytes=max_upload_bytes,
+                    )
+                    paths[field] = path
+            except _FileTooLargeError as error:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "error": "file_too_large",
+                        "file": error.field,
+                        "max_bytes": error.max_bytes,
+                    },
+                )
+
+            try:
+                report = await run_in_threadpool(renderer, paths)
+            except CsvValidationError as error:
+                return JSONResponse(
+                    status_code=422,
+                    content=_validation_error_response(error),
+                )
+
+            return Response(content=report, media_type="application/json")
+    finally:
+        for upload in uploads.values():
+            await upload.close()
 
 
 def _request_directory() -> TemporaryDirectory[str]:
