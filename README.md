@@ -5,8 +5,9 @@
 A deterministic three-way matching tool that validates supplier invoices against purchase
 orders and goods receipts before payment.
 
-**Status:** The V0.1 core CLI is complete. Web Phase 1 adds an optional stateless FastAPI adapter
-without changing the accepted reconciliation or reporting contracts.
+**Status:** The V0.1 core CLI and the Web Phase 2 frontend MVP are complete. The Next.js
+interface uses the optional stateless FastAPI adapter without changing the accepted reconciliation
+or reporting contracts.
 
 ## Why this exists
 
@@ -38,7 +39,7 @@ CSV inputs → strict validation → typed models → reconciliation → authori
                               ↓                                                   ↓
                     CLI + file outputs                              FastAPI JSON adapter
                                                                                 ↑
-                                                                         future frontend
+                                                                       Next.js frontend
 ```
 
 Validation, reconciliation, rendering, and filesystem orchestration remain separate. The core
@@ -197,9 +198,36 @@ extensions, and MIME types are not trusted; the existing strict CSV loaders rema
 The service stores no uploads or results.
 
 Invalid CSV returns a structured `422` response, oversized files return `413`, and missing
-multipart fields use FastAPI's `422` request validation. This MVP has no authentication,
-persistence, or CORS configuration and must not be exposed anonymously to the public internet with
-sensitive financial data.
+multipart fields use FastAPI's `422` request validation. Browser origins are denied by default and
+may be allowed explicitly with `RECONCILE_ALLOWED_ORIGINS`; wildcard origins and credentialed CORS
+requests are not enabled. This MVP has no authentication or persistence and must not be exposed
+anonymously to the public internet with sensitive financial data.
+
+## Frontend — MVP
+
+The frontend is a typed Next.js application under `frontend/`. It provides the complete three-file
+workflow, structured error feedback, API-owned summaries and disputed totals, result filtering,
+and a responsive horizontally scrollable table.
+
+Run the backend with the frontend development origin explicitly allowed:
+
+```powershell
+$env:RECONCILE_ALLOWED_ORIGINS="http://localhost:3000"
+python -m uvicorn reconcile.web.app:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal, create the local public configuration and start Next.js:
+
+```powershell
+Set-Location frontend
+Copy-Item .env.example .env.local
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. `NEXT_PUBLIC_API_BASE_URL` is the browser-visible FastAPI origin and
+must contain only an HTTP or HTTPS origin. It is public configuration, not a secret. Do not place
+tokens or credentials in `NEXT_PUBLIC_*` variables.
 
 ## Input contract
 
@@ -238,7 +266,9 @@ wrong-width rows, and inconsistent document fields are rejected rather than sile
 - Python 3.11+
 - `dataclasses`, `Decimal`, `csv`, `json`, `pathlib`, and `argparse`
 - FastAPI and Uvicorn as optional web dependencies
+- Next.js, React, TypeScript, Tailwind CSS, and shadcn/ui under `frontend/`
 - pytest and Ruff
+- Vitest, React Testing Library, ESLint, and the Next.js production build
 - setuptools with `pyproject.toml`
 - GitHub Actions
 
@@ -258,13 +288,19 @@ python -m pip check
 python -m build
 python -m reconcile --help
 reconcile --help
+cd frontend
+npm ci
+npm run lint
+npm test -- --run
+npm run build
 ```
 
 The workflow in `.github/workflows/ci.yml` performs the complete core and web suite on Python 3.11
 and 3.12 after installing both extras. It also runs the CLI sample and installs the built wheel
 without dependencies in a clean environment, proving core imports and the CLI remain independent
-of FastAPI. No `PYTHONPATH` shortcut is used. Dependabot checks dependencies and official GitHub
-Actions weekly.
+of FastAPI. A separate Node 24 job installs from the frontend lockfile, lints, tests, and builds the
+Next.js application. No `PYTHONPATH` shortcut is used. Dependabot checks dependencies and official
+GitHub Actions weekly.
 
 Official actions are referenced by their stable major versions so compatible maintenance updates
 arrive automatically; the workflow grants only read access to repository contents.
@@ -277,7 +313,7 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Known limits
 
-- No web UI, database, authentication, authorization, or saved run history.
+- No database, authentication, authorization, or saved run history.
 - The API is a local/development MVP, not a public production financial service.
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
 - No receipt-level findings model.
@@ -289,27 +325,18 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next web phase
 
-Web Phase 2 can add a frontend while continuing to reuse the same backend and core package:
-
-```text
-React / Next.js frontend
-          ↓
-existing FastAPI adapter
-          ↓
-existing reconciliation package
-          ↓
-PostgreSQL for saved runs, users, and history
-```
-
-The next phase should focus on upload UX, validation feedback, and result presentation. Public
-deployment, authentication, authorization, and persistence remain separate later concerns.
+Web Phase 3 should harden the existing stateless workflow with browser end-to-end coverage,
+large-file usability checks, accessibility regression testing, and documented reverse-proxy and
+deployment controls. Authentication, authorization, persistence, and public deployment remain
+separate decisions that require a threat model rather than incidental additions to the MVP.
 
 ## Project history
 
 The implementation decisions and verification evidence are preserved in
 [`docs/`](docs), from [`Phase A`](docs/phase-a-report.md) through
 [`Phase F`](docs/phase-f-report.md), followed by the separate
-[`Web Phase 1`](docs/web-phase-1-report.md).
+[`Web Phase 1`](docs/web-phase-1-report.md) and
+[`Web Phase 2`](docs/web-phase-2-report.md) reports.
 
 ## License
 

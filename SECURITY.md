@@ -2,9 +2,9 @@
 
 ## Scope
 
-The project contains the V0.1 local CLI and an optional stateless FastAPI adapter. Both read three
-CSV inputs, run the same deterministic reconciliation package, and return terminal, JSON, or CSV
-reports. Neither executes input content or persists reconciliation data.
+The project contains the V0.1 local CLI, an optional stateless FastAPI adapter, and a Next.js
+frontend. They use the same deterministic reconciliation package and return terminal, JSON, CSV,
+or browser-rendered reports. None executes input content or persists reconciliation data.
 
 The process can read and write any path permitted to the operating-system user who runs it. Run
 it with ordinary user privileges and review paths before using `--force`.
@@ -46,12 +46,28 @@ it with ordinary user privileges and review paths before using `--force`.
   422 without exposing temporary server paths.
 - Unexpected failures return a generic HTTP 500 payload. Detailed exceptions remain in server
   logs rather than HTTP responses.
-- The API has no database, upload storage, result history, authentication, authorization, or CORS
-  middleware. It is intended for local development and trusted environments only.
+- Browser access is denied by default. `RECONCILE_ALLOWED_ORIGINS` accepts a comma-separated list
+  of exact HTTP or HTTPS origins. Wildcards are rejected, credentials are disabled, and the CORS
+  policy permits only the reconciliation `POST` method and its content-type header.
+- The API has no database, upload storage, result history, authentication, or authorization. It is
+  intended for local development and trusted environments only.
 - Do not expose the MVP anonymously to the public internet with sensitive financial data. A
   production deployment requires HTTPS, explicit trusted origins, authentication and
   authorization, deployment-layer request limits, timeouts, logging controls, and a new threat
   review.
+
+## Frontend boundary
+
+- `NEXT_PUBLIC_API_BASE_URL` is intentionally browser-visible configuration and accepts only an
+  HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
+- Uploaded files and reconciliation responses stay in the current React session. The frontend
+  does not write them to local storage, session storage, IndexedDB, or a database; refreshing or
+  starting a new reconciliation clears the current state.
+- Browser filename and MIME hints improve usability only. FastAPI and the strict Python loaders
+  remain the validation and size-enforcement boundary.
+- The frontend renders API strings as text and does not inject returned values as HTML.
+- There are no user accounts, tokens, or authentication flows. The current frontend does not make
+  anonymous public deployment appropriate.
 
 ## Dependencies and data
 
