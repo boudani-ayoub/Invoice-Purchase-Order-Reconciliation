@@ -79,6 +79,34 @@ it with ordinary user privileges and review paths before using `--force`.
 - There are no user accounts, tokens, or authentication flows. The current frontend does not make
   anonymous public deployment appropriate.
 
+## Optional persistence boundary
+
+The `db` extra adds PostgreSQL infrastructure under `reconcile.persistence`. It is not imported by
+the CLI or stateless HTTP handlers, and uploads/results are not saved by current workflows.
+There are no public organization, user, invoice, run-history, or other company-data CRUD routes.
+
+Tenant tables carry organization ownership, composite foreign keys, and ENABLE/FORCE RLS policies
+with both read and write predicates. Missing transaction context fails closed. `tenant_session`
+uses bound transaction-local context, tested across committed and rolled-back transactions on a
+reused connection. It accepts an already verified organization UUID; it does not establish identity
+or membership. Phase 2 must derive that context from authenticated authorization. A browser-supplied
+organization ID is only a selector.
+
+The provisioned runtime role does not own tables and must not have superuser/BYPASSRLS. It has no
+users access, identity-management writes, schema creation, DELETE, or TRUNCATE privileges. Schema
+migrations use a separate role. `DATABASE_URL` stays private and configuration errors do not reveal
+its value. Financial fields use finite NUMERIC/Decimal constraints. Duplicates and unresolved
+references are retained as evidence; discrepancies are not rejected by agreement constraints.
+
+No raw uploaded bytes or temporary paths are stored. Result snapshots carry explicit versions and
+cannot be mutated through ordinary SQL, including privileged row UPDATE/DELETE. Future retention
+and audit operations need a deliberately authorized policy. Table owners/superusers still control
+DDL and can disable protections; database administration is a separate trust boundary.
+
+See [data-model-v1.md](docs/data-model-v1.md) and the
+[ASVS 5.0 security roadmap](docs/security-roadmap.md). Reviewing that checklist is not certification
+or a claim of production security. Database RLS does not protect unauthenticated HTTP traffic.
+
 ## Dependencies and data
 
 The core application has no third-party runtime dependencies. FastAPI, Uvicorn, and multipart

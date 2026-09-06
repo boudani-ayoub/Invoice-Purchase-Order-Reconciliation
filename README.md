@@ -2,12 +2,40 @@
 
 [![CI](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/workflows/ci.yml/badge.svg)](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/workflows/ci.yml)
 
-A deterministic three-way matching tool that validates supplier invoices against purchase
-orders and goods receipts before payment.
+A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
+purchase-order fulfillment.
 
-**Status:** The V0.1 core CLI and the stateless Web Phase 3 MVP are complete. The typed Next.js
-interface uses the optional FastAPI adapter without changing the accepted reconciliation or
-reporting contracts, with real-service browser, accessibility, and upload-boundary coverage.
+**Status:** Product Phase 1 adds four stateless analysis workflows and an optional PostgreSQL
+foundation. The accepted three-way CLI and legacy API contracts remain available. Database
+storage is not connected to uploads: persistent user/company workflows wait for authenticated
+Product Phase 2/3. There is no login, history, admin dashboard, or inventory balance yet.
+
+## Choose a workflow
+
+Open `/reconcile` to select a workflow, or bookmark its dedicated page.
+
+| Workflow | Required CSV files | What it checks | Unavailable controls |
+| --- | --- | --- | --- |
+| Invoice ↔ PO: classic two-way invoice match | Purchase orders, invoices | References, duplicates, supplier, currency, cumulative ordered capacity, price tolerance | Receipt coverage |
+| Invoice ↔ Receipt: receipt-coverage invoice check | Goods receipts, invoices | Exact PO/line/item receipt references, duplicates, cumulative received capacity | PO price, ordered quantity, PO supplier/currency, commercial terms |
+| PO ↔ Receipt: receiving / fulfillment analysis | Purchase orders, goods receipts | Fully/partially/not/over-received lines, outstanding delivery, unresolved receipts | Invoice/payment exposure, inventory balances |
+| Three-way: invoice ↔ PO ↔ receipt | All three files | Existing invoice controls against both order terms and received capacity | Taxes, returns, credit notes, as-of-date controls |
+
+Each workflow uses `/api/v1/analyses/<mode>` and `/reconcile/<mode>`, where mode is `invoice-po`,
+`invoice-receipt`, `po-receipt`, or `three-way`. Each API endpoint declares exactly its required
+multipart fields. `/api/v1/reconcile` and the original `/` page remain available for three-way use.
+New reports include a `mode` discriminator; receiving reports have their own types and separate
+`orphan_receipts`, rather than meaningless invoice fields.
+
+Invoice ↔ PO supports the current quantity up to remaining ordered capacity. Invoice ↔ Receipt
+supports it up to remaining exact-key receipt capacity. Its potential unsupported amount is
+`(invoice quantity - supported quantity) × invoice unit price`, rounded with the existing Decimal
+policy. Duplicate groups retain full invoice exposure, counted once at the maximum group amount;
+ambiguous targets consume no capacity. Receipt coverage cannot establish agreed price variance.
+
+Receiving analysis aggregates valid receipts, reports every unresolved receipt separately, and
+values outstanding/excess quantities at the PO unit price by currency. Partial delivery is an
+open fulfillment state, not automatically an error. These values are not invoice disputes.
 
 ## Why this exists
 
@@ -165,8 +193,8 @@ directory. Existing reports are refused by default; `--force` explicitly permits
 
 ## Web API — MVP
 
-The optional FastAPI layer exposes the same engine and Phase D JSON representation over HTTP. The
-CLI remains available without installing any web dependencies.
+The optional FastAPI layer exposes the four analysis services over HTTP. The legacy three-way
+route retains the Phase D JSON representation. The CLI needs no web dependencies.
 
 Install the web and test extras, then start the development server:
 
@@ -180,6 +208,10 @@ Open `http://127.0.0.1:8000/docs` for the generated OpenAPI interface. The MVP p
 ```text
 GET  /health
 POST /api/v1/reconcile
+POST /api/v1/analyses/invoice-po
+POST /api/v1/analyses/invoice-receipt
+POST /api/v1/analyses/po-receipt
+POST /api/v1/analyses/three-way
 ```
 
 Submit the three required multipart fields:
@@ -205,9 +237,10 @@ anonymously to the public internet with sensitive financial data.
 
 ## Frontend — MVP
 
-The frontend is a typed Next.js application under `frontend/`. It provides the complete three-file
-workflow, structured error feedback, API-owned summaries and disputed totals, result filtering,
-and a responsive horizontally scrollable table.
+The frontend is a typed Next.js application under `frontend/`. A four-workflow hub opens dedicated
+pages with a shared upload workspace, visible control limitations, mode-specific results,
+structured errors, and API-owned Decimal-string totals. Invoice results retain filters and a
+responsive horizontally scrollable table.
 
 Run the backend with the frontend development origin explicitly allowed:
 
@@ -255,6 +288,19 @@ Dates use `YYYY-MM-DD`; currencies use three uppercase letters; quantities are p
 prices are non-negative decimals. Leading/trailing whitespace, malformed numbers, invalid UTF-8,
 wrong-width rows, and inconsistent document fields are rejected rather than silently cleaned.
 
+## Optional database foundation
+
+`pip install -e ".[db]"` adds SQLAlchemy 2, Alembic, and psycopg 3. PostgreSQL is never required
+for the CLI, stateless API, or analysis pages. Organizations, users, memberships, source metadata,
+suppliers, items, document headers/lines, analysis runs, findings, and immutable result snapshots
+are modeled in an isolated persistence package. Duplicate invoice occurrences and unresolved
+source references remain persistable.
+
+See [the data model](docs/data-model-v1.md), [database setup and integration tests](docs/database-development.md),
+and [security roadmap](docs/security-roadmap.md). Every tenant business row has organization
+ownership, composite foreign keys, and forced PostgreSQL row-level security. This is a database
+boundary for verified future service transactions, not authorization for anonymous HTTP traffic.
+
 ## Engineering decisions
 
 - `Decimal` keeps binary floating-point error out of money and quantity calculations.
@@ -277,6 +323,7 @@ wrong-width rows, and inconsistent document fields are rejected rather than sile
 - pytest and Ruff
 - Vitest, React Testing Library, ESLint, and the Next.js production build
 - Playwright Chromium and axe-core for real-service E2E and accessibility regression checks
+- PostgreSQL, SQLAlchemy 2, Alembic, and psycopg 3 in the optional `db` extra
 - setuptools with `pyproject.toml`
 - GitHub Actions
 
@@ -313,6 +360,11 @@ Vitest, builds the production Next.js application, installs Chromium, and exerci
 against a real Uvicorn process with Playwright and axe-core. No `PYTHONPATH` shortcut is used.
 Dependabot checks dependencies and official GitHub Actions weekly.
 
+A separate PostgreSQL 17 job installs `.[dev,db]`, migrates a clean database as a schema owner,
+and tests constraints and RLS with a distinct non-owner runtime login. Configure
+`TEST_DATABASE_ADMIN_URL` and run `python -m pytest tests/database -vv` to reproduce it locally.
+The existing core wheel smoke still installs no optional dependencies.
+
 Official actions are referenced by their stable major versions so compatible maintenance updates
 arrive automatically; the workflow grants only read access to repository contents.
 
@@ -324,21 +376,21 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Known limits
 
-- No database, authentication, authorization, or saved run history.
+- No authentication, HTTP tenant authorization, persistent imports, or saved run history.
 - The API is a local/development MVP, not a public production financial service.
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
-- No receipt-level findings model.
+- Invoice workflows report invoice findings; the separate fulfillment workflow exposes orphan receipts.
 - No proof of a repeated whole document without a source occurrence identifier.
 - The CLI has no project-specific row-count or file-size limit; the API enforces 10 MiB per file.
 - Detailed CSV favors exact machine-readable values over spreadsheet formula escaping.
 - Two forced CSV replacements are staged together but are not one transactional operation.
 - This is a focused V0.1 control engine, not production ERP software.
 
-## Next web phase
+## Next product phase
 
-A future phase may add identity, authorization, persistence, and an authenticated deployment, but
-only after a dedicated data model and threat review. Web Phase 3 deliberately stops at hardening
-the stateless workflow and does not imply that anonymous public financial-data processing is safe.
+Product Phase 2 establishes identity, secure sessions, organization membership, tenant authorization,
+and protected routes. Persistent runs and history follow in Phase 3. The complete sequence through
+authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
 
 ## Project history
 
@@ -347,7 +399,8 @@ The implementation decisions and verification evidence are preserved in
 [`Phase F`](docs/phase-f-report.md), followed by the separate
 [`Web Phase 1`](docs/web-phase-1-report.md) and
 [`Web Phase 2`](docs/web-phase-2-report.md), then the
-[`Web Phase 3`](docs/web-phase-3-report.md) hardening report.
+[`Web Phase 3`](docs/web-phase-3-report.md) hardening report and
+[`Product Phase 1`](docs/product-phase-1-report.md).
 
 ## License
 

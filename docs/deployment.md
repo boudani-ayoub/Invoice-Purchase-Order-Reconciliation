@@ -3,8 +3,9 @@
 ## Readiness boundary
 
 The current application is a hardened stateless MVP, not an anonymous public financial service.
-It has no authentication, authorization, tenant isolation, rate limiting, persistence, or audit
-trail. Keep it on a trusted network until those controls have a dedicated threat model.
+It has no authentication, HTTP tenant authorization, rate limiting, persistent product workflows,
+or actor-aware audit trail. Keep it on a trusted network until those controls have a dedicated
+threat model. Optional PostgreSQL schema/RLS infrastructure is not connected to HTTP requests.
 
 The preferred topology uses one public HTTPS origin:
 
@@ -138,3 +139,15 @@ do not add broad host wildcards or `unsafe-eval` to make a broken production pol
 
 Authentication, authorization, rate limits, CSRF assumptions, audit events, data retention, and
 incident response must be designed before this profile is considered internet-facing production.
+
+## Optional PostgreSQL foundation
+
+The four `/api/v1/analyses/*` routes and legacy `/api/v1/reconcile` share the same upload boundary.
+The 32 MiB total proxy ceiling accommodates the three-file mode; two-file routes declare only
+their required inputs. Neither the CLI nor API needs a database URL or database packages.
+
+Database development and migration commands are in [database-development.md](database-development.md).
+Provision separate migration and runtime roles; never expose `DATABASE_URL` in `NEXT_PUBLIC_*`
+configuration. Do not point a future request service at a schema-owner, superuser, or BYPASSRLS
+connection. Keep PostgreSQL on a private network and introduce persistent HTTP access only after
+Product Phase 2 verifies identity, organization membership, and permissions.
