@@ -1,13 +1,17 @@
 """FastAPI adapter for stateless reconciliation requests."""
 
 import logging
+import os
+from collections.abc import Sequence
 from importlib.metadata import version
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from reconcile import (
@@ -21,6 +25,7 @@ from reconcile import (
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 64 * 1024
+ALLOWED_ORIGINS_ENV = "RECONCILE_ALLOWED_ORIGINS"
 
 _DISTRIBUTION_NAME = "invoice-purchase-order-reconciliation"
 _INTERNAL_FILENAMES = {
@@ -39,7 +44,11 @@ class _FileTooLargeError(Exception):
         super().__init__(f"{field} exceeds the {max_bytes}-byte upload limit")
 
 
-def create_app(*, max_upload_bytes: int = MAX_UPLOAD_BYTES) -> FastAPI:
+def create_app(
+    *,
+    max_upload_bytes: int = MAX_UPLOAD_BYTES,
+    allowed_origins: str | Sequence[str] | None = None,
+) -> FastAPI:
     """Create the stateless HTTP application."""
 
     application = FastAPI(
@@ -47,6 +56,15 @@ def create_app(*, max_upload_bytes: int = MAX_UPLOAD_BYTES) -> FastAPI:
         version=version(_DISTRIBUTION_NAME),
         description=("Stateless HTTP access to the existing deterministic reconciliation engine."),
     )
+    configured_origins = _resolve_allowed_origins(allowed_origins)
+    if configured_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(configured_origins),
+            allow_credentials=False,
+            allow_methods=["POST"],
+            allow_headers=["Content-Type"],
+        )
 
     @application.exception_handler(Exception)
     async def internal_error_handler(request: Request, error: Exception) -> JSONResponse:
@@ -136,6 +154,38 @@ def create_app(*, max_upload_bytes: int = MAX_UPLOAD_BYTES) -> FastAPI:
 
 def _request_directory() -> TemporaryDirectory[str]:
     return TemporaryDirectory(prefix="reconcile-api-")
+
+
+def _resolve_allowed_origins(
+    allowed_origins: str | Sequence[str] | None,
+) -> tuple[str, ...]:
+    if allowed_origins is None:
+        configured = os.environ.get(ALLOWED_ORIGINS_ENV, "").split(",")
+    elif isinstance(allowed_origins, str):
+        configured = (allowed_origins,)
+    else:
+        configured = allowed_origins
+    origins: list[str] = []
+    for value in configured:
+        origin = value.strip().rstrip("/")
+        if not origin:
+            continue
+        if origin == "*":
+            raise ValueError(f"{ALLOWED_ORIGINS_ENV} does not accept wildcard origins")
+
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(f"Invalid origin configured in {ALLOWED_ORIGINS_ENV}: {value!r}")
+        if origin not in origins:
+            origins.append(origin)
+
+    return tuple(origins)
 
 
 async def _write_upload(

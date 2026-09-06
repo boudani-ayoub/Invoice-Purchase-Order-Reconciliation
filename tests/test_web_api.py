@@ -91,6 +91,81 @@ def test_builtin_api_documentation_is_available(client: TestClient) -> None:
     assert "application/json" in reconcile_operation["responses"]["200"]["content"]
 
 
+def test_configured_frontend_origin_receives_narrow_cors_headers() -> None:
+    origin = "http://localhost:3000"
+
+    with TestClient(web_app.create_app(allowed_origins=[origin])) as test_client:
+        response = test_client.options(
+            "/api/v1/reconcile",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "Content-Type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-methods"] == "POST"
+    allowed_headers = response.headers["access-control-allow-headers"].lower().split(", ")
+    assert "content-type" in allowed_headers
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_unconfigured_frontend_origin_receives_no_cors_grant() -> None:
+    with TestClient(web_app.create_app(allowed_origins=["http://localhost:3000"])) as test_client:
+        response = test_client.options(
+            "/api/v1/reconcile",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_allowed_origins_are_loaded_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    origin = "http://127.0.0.1:3000"
+    monkeypatch.setenv(web_app.ALLOWED_ORIGINS_ENV, f" {origin}/, {origin} ")
+
+    with TestClient(web_app.create_app()) as test_client:
+        response = test_client.options(
+            "/api/v1/reconcile",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_single_explicit_origin_string_is_not_split_into_characters() -> None:
+    origin = "http://localhost:3000"
+
+    with TestClient(web_app.create_app(allowed_origins=origin)) as test_client:
+        response = test_client.options(
+            "/api/v1/reconcile",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_wildcard_cors_origin_is_rejected() -> None:
+    with pytest.raises(ValueError, match="does not accept wildcard origins"):
+        web_app.create_app(allowed_origins=["*"])
+
+
 def test_sample_response_is_exactly_the_existing_json_report(
     client: TestClient,
     request_directories: list[Path],
