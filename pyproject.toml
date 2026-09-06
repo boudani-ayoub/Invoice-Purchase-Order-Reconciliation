@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "invoice-purchase-order-reconciliation"
 version = "0.1.0"
-description = "Deterministic three-way reconciliation for purchase orders, receipts, and invoices"
+description = "Deterministic invoice matching, receipt coverage, and purchase-order fulfillment analysis"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -35,6 +35,11 @@ web = [
   "python-multipart>=0.0.32,<1",
   "uvicorn>=0.52,<1",
 ]
+db = [
+  "SQLAlchemy>=2.0.46,<2.1",
+  "alembic>=1.18,<2",
+  "psycopg[binary]>=3.3,<4",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -42,6 +47,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+markers = ["database: requires an explicitly configured disposable PostgreSQL database"]
 
 [tool.ruff]
 line-length = 100
