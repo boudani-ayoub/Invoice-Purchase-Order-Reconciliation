@@ -60,12 +60,22 @@ it with ordinary user privileges and review paths before using `--force`.
 
 - `NEXT_PUBLIC_API_BASE_URL` is intentionally browser-visible configuration and accepts only an
   HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
+- `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` is public build configuration. It defaults to 120 seconds
+  and must be a positive integer. Timing out aborts the browser request; it does not terminate work
+  already executing in FastAPI. A retry can overlap with that work, although the current operation
+  is stateless and creates no payment or persistence side effect.
 - Uploaded files and reconciliation responses stay in the current React session. The frontend
   does not write them to local storage, session storage, IndexedDB, or a database; refreshing or
   starting a new reconciliation clears the current state.
 - Browser filename and MIME hints improve usability only. FastAPI and the strict Python loaders
-  remain the validation and size-enforcement boundary.
+  remain the validation and size-enforcement boundary. The frontend intentionally has no second
+  file-size constant that could drift from the API limit.
 - The frontend renders API strings as text and does not inject returned values as HTML.
+- Next.js emits a focused CSP (`base-uri`, `frame-ancestors`, and `object-src`), `nosniff`, a strict
+  origin referrer policy, and a restrictive permissions policy. TLS termination and HSTS belong to
+  the deployment proxy. A broader script/style/connect CSP requires a deployment-specific policy
+  and must not be approximated with unsafe directives or broad wildcards.
+- The application loads no remote fonts, scripts, analytics, or other third-party browser assets.
 - There are no user accounts, tokens, or authentication flows. The current frontend does not make
   anonymous public deployment appropriate.
 
@@ -84,3 +94,5 @@ repository owner through the GitHub profile to agree on a private reporting chan
 
 A future public deployment with authentication, authorization, and persistence will require a
 separate threat model. This policy does not claim production readiness or compliance certification.
+The current reverse-proxy baseline and its remaining requirements are documented in
+[`docs/deployment.md`](docs/deployment.md).

@@ -5,9 +5,9 @@
 A deterministic three-way matching tool that validates supplier invoices against purchase
 orders and goods receipts before payment.
 
-**Status:** The V0.1 core CLI and the Web Phase 2 frontend MVP are complete. The Next.js
-interface uses the optional stateless FastAPI adapter without changing the accepted reconciliation
-or reporting contracts.
+**Status:** The V0.1 core CLI and the stateless Web Phase 3 MVP are complete. The typed Next.js
+interface uses the optional FastAPI adapter without changing the accepted reconciliation or
+reporting contracts, with real-service browser, accessibility, and upload-boundary coverage.
 
 ## Why this exists
 
@@ -227,7 +227,14 @@ npm run dev
 
 Open `http://localhost:3000`. `NEXT_PUBLIC_API_BASE_URL` is the browser-visible FastAPI origin and
 must contain only an HTTP or HTTPS origin. It is public configuration, not a secret. Do not place
-tokens or credentials in `NEXT_PUBLIC_*` variables.
+tokens or credentials in `NEXT_PUBLIC_*` variables. `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS`
+controls how long the browser waits for a response and defaults to 120 seconds. A browser timeout
+does not cancel reconciliation work already running on the server.
+
+The browser deliberately has no duplicate file-size rule. FastAPI remains authoritative for the
+10 MiB per-file limit and returns the file-specific `413` response shown by the UI. See
+[`docs/deployment.md`](docs/deployment.md) for the same-origin reverse-proxy profile, TLS, total
+request-size, timeout, forwarded-header, process, and logging guidance.
 
 ## Input contract
 
@@ -269,6 +276,7 @@ wrong-width rows, and inconsistent document fields are rejected rather than sile
 - Next.js, React, TypeScript, Tailwind CSS, and shadcn/ui under `frontend/`
 - pytest and Ruff
 - Vitest, React Testing Library, ESLint, and the Next.js production build
+- Playwright Chromium and axe-core for real-service E2E and accessibility regression checks
 - setuptools with `pyproject.toml`
 - GitHub Actions
 
@@ -292,15 +300,18 @@ cd frontend
 npm ci
 npm run lint
 npm test -- --run
-npm run build
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8010 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
 The workflow in `.github/workflows/ci.yml` performs the complete core and web suite on Python 3.11
 and 3.12 after installing both extras. It also runs the CLI sample and installs the built wheel
 without dependencies in a clean environment, proving core imports and the CLI remain independent
-of FastAPI. A separate Node 24 job installs from the frontend lockfile, lints, tests, and builds the
-Next.js application. No `PYTHONPATH` shortcut is used. Dependabot checks dependencies and official
-GitHub Actions weekly.
+of FastAPI. A separate Node 24 job installs the API web extra and frontend lockfile, lints, runs
+Vitest, builds the production Next.js application, installs Chromium, and exercises that build
+against a real Uvicorn process with Playwright and axe-core. No `PYTHONPATH` shortcut is used.
+Dependabot checks dependencies and official GitHub Actions weekly.
 
 Official actions are referenced by their stable major versions so compatible maintenance updates
 arrive automatically; the workflow grants only read access to repository contents.
@@ -318,17 +329,16 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
 - No receipt-level findings model.
 - No proof of a repeated whole document without a source occurrence identifier.
-- No project-specific row-count or file-size limit; inputs are processed in memory.
+- The CLI has no project-specific row-count or file-size limit; the API enforces 10 MiB per file.
 - Detailed CSV favors exact machine-readable values over spreadsheet formula escaping.
 - Two forced CSV replacements are staged together but are not one transactional operation.
 - This is a focused V0.1 control engine, not production ERP software.
 
 ## Next web phase
 
-Web Phase 3 should harden the existing stateless workflow with browser end-to-end coverage,
-large-file usability checks, accessibility regression testing, and documented reverse-proxy and
-deployment controls. Authentication, authorization, persistence, and public deployment remain
-separate decisions that require a threat model rather than incidental additions to the MVP.
+A future phase may add identity, authorization, persistence, and an authenticated deployment, but
+only after a dedicated data model and threat review. Web Phase 3 deliberately stops at hardening
+the stateless workflow and does not imply that anonymous public financial-data processing is safe.
 
 ## Project history
 
@@ -336,7 +346,8 @@ The implementation decisions and verification evidence are preserved in
 [`docs/`](docs), from [`Phase A`](docs/phase-a-report.md) through
 [`Phase F`](docs/phase-f-report.md), followed by the separate
 [`Web Phase 1`](docs/web-phase-1-report.md) and
-[`Web Phase 2`](docs/web-phase-2-report.md) reports.
+[`Web Phase 2`](docs/web-phase-2-report.md), then the
+[`Web Phase 3`](docs/web-phase-3-report.md) hardening report.
 
 ## License
 

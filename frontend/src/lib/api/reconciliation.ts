@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/lib/config";
+import { getApiBaseUrl, getReconciliationTimeoutMs } from "@/lib/config";
 import type {
   CsvValidationIssue,
   ReconciliationErrorDetail,
@@ -26,14 +26,24 @@ export async function reconcileFiles(files: UploadFiles): Promise<Reconciliation
     formData.append(field, file);
   }
 
+  const abortController = new AbortController();
+  const timeout = window.setTimeout(
+    () => abortController.abort(),
+    getReconciliationTimeoutMs(),
+  );
   let response: Response;
   try {
     response = await fetch(`${getApiBaseUrl()}${RECONCILIATION_PATH}`, {
       method: "POST",
       body: formData,
+      signal: abortController.signal,
     });
   } catch {
-    throw new ReconciliationRequestError({ kind: "network" });
+    throw new ReconciliationRequestError({
+      kind: abortController.signal.aborted ? "timeout" : "network",
+    });
+  } finally {
+    window.clearTimeout(timeout);
   }
 
   const payload = await readJson(response);

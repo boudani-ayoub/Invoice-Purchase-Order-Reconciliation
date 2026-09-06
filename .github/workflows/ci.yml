@@ -85,7 +85,9 @@ jobs:
       run:
         working-directory: frontend
     env:
-      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+      E2E_PYTHON_EXECUTABLE: python
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8010
+      NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS: 120000
 
     steps:
       - name: Check out repository
@@ -100,8 +102,22 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install API dependencies
+        working-directory: ${{ github.workspace }}
+        run: python -m pip install -e ".[web]"
+
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Run frontend lint
         run: npm run lint
@@ -111,3 +127,6 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      - name: Run browser E2E and accessibility tests
+        run: npm run test:e2e

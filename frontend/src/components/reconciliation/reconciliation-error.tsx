@@ -56,6 +56,12 @@ export function ReconciliationError({ error, onRetry }: ReconciliationErrorProps
           title: "The reconciliation service could not be reached",
           message: "Check that the backend is running and try again.",
         }
+      : error.kind === "timeout"
+        ? {
+            icon: Unplug,
+            title: "The reconciliation request timed out",
+            message: "The service may still be processing the files. Wait a moment, then try again.",
+          }
       : error.kind === "server"
         ? {
             icon: ServerCrash,

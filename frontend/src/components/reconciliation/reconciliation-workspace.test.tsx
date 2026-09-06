@@ -181,6 +181,11 @@ describe("ReconciliationWorkspace", () => {
       "Check that the backend is running and try again.",
     ],
     [
+      { kind: "timeout" } as const,
+      "The reconciliation request timed out",
+      "The service may still be processing the files. Wait a moment, then try again.",
+    ],
+    [
       { kind: "server" } as const,
       "Something went wrong while processing the reconciliation",
       "The service returned an internal error. Please try again.",

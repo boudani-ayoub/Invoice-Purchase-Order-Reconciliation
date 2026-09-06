@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ReconciliationRequestError,
@@ -26,7 +26,12 @@ function jsonResponse(payload: unknown, status: number): Response {
 
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+  vi.stubEnv("NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS", "120000");
   vi.stubGlobal("fetch", fetchMock);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("reconcileFiles", () => {
@@ -41,6 +46,7 @@ describe("reconcileFiles", () => {
     expect(request?.method).toBe("POST");
     expect(request?.headers).toBeUndefined();
     expect(request?.body).toBeInstanceOf(FormData);
+    expect(request?.signal).toBeInstanceOf(AbortSignal);
     expect([...((request?.body as FormData).keys())]).toEqual([
       "purchase_orders",
       "receipts",
@@ -124,6 +130,25 @@ describe("reconcileFiles", () => {
     await expect(reconcileFiles(uploadFiles())).rejects.toEqual(
       new ReconciliationRequestError({ kind: "network" }),
     );
+  });
+
+  it("aborts a request after the configured browser timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS", "25");
+    fetchMock.mockImplementationOnce(
+      (_input, request) =>
+        new Promise((_resolve, reject) => {
+          request?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Request aborted", "AbortError"));
+          });
+        }),
+    );
+
+    const result = expect(reconcileFiles(uploadFiles())).rejects.toEqual(
+      new ReconciliationRequestError({ kind: "timeout" }),
+    );
+    await vi.advanceTimersByTimeAsync(25);
+    await result;
   });
 
   it("rejects a successful response that does not match the typed contract", async () => {

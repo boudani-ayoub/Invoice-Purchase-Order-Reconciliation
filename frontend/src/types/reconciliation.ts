@@ -63,6 +63,9 @@ export type ReconciliationErrorDetail =
       kind: "network";
     }
   | {
+      kind: "timeout";
+    }
+  | {
       kind: "server";
     }
   | {
