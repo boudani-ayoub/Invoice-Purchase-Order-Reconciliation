@@ -6,7 +6,11 @@ import type {
   ReconciliationResult,
   ReconciliationSummary,
 } from "@/types/reconciliation";
-import type { UploadFiles } from "@/constants/uploads";
+import {
+  UPLOAD_SOURCES,
+  type UploadFiles,
+  type UploadField,
+} from "@/constants/uploads";
 
 const RECONCILIATION_PATH = "/api/v1/reconcile";
 
@@ -17,11 +21,33 @@ export class ReconciliationRequestError extends Error {
   }
 }
 
-export async function reconcileFiles(files: UploadFiles): Promise<ReconciliationReport> {
+export async function reconcileFiles(
+  files: UploadFiles,
+): Promise<ReconciliationReport> {
+  const payload = await requestFiles(
+    files,
+    RECONCILIATION_PATH,
+    UPLOAD_SOURCES.map((source) => source.field),
+  );
+  if (!isReconciliationReport(payload)) {
+    throw new ReconciliationRequestError({ kind: "unexpected_response" });
+  }
+  return payload;
+}
+
+export async function requestFiles(
+  files: UploadFiles,
+  path: string,
+  requiredSources: readonly UploadField[],
+): Promise<unknown> {
   const formData = new FormData();
-  for (const [field, file] of Object.entries(files)) {
+  for (const field of requiredSources) {
+    const file = files[field];
     if (!file) {
-      throw new ReconciliationRequestError({ kind: "missing_upload", fields: [field] });
+      throw new ReconciliationRequestError({
+        kind: "missing_upload",
+        fields: [field],
+      });
     }
     formData.append(field, file);
   }
@@ -33,7 +59,7 @@ export async function reconcileFiles(files: UploadFiles): Promise<Reconciliation
   );
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}${RECONCILIATION_PATH}`, {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: "POST",
       body: formData,
       signal: abortController.signal,
@@ -48,10 +74,7 @@ export async function reconcileFiles(files: UploadFiles): Promise<Reconciliation
 
   const payload = await readJson(response);
   if (response.ok) {
-    if (isReconciliationReport(payload)) {
-      return payload;
-    }
-    throw new ReconciliationRequestError({ kind: "unexpected_response" });
+    return payload;
   }
 
   if (response.status === 413 && isFileTooLargePayload(payload)) {
@@ -92,19 +115,31 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isObject(value) && Object.values(value).every((item) => typeof item === "string");
+export function isStringRecord(
+  value: unknown,
+): value is Record<string, string> {
+  return (
+    isObject(value) &&
+    Object.values(value).every((item) => typeof item === "string")
+  );
 }
 
-function isNumberRecord(value: unknown): value is Record<string, number> {
-  return isObject(value) && Object.values(value).every((item) => typeof item === "number");
+export function isNumberRecord(
+  value: unknown,
+): value is Record<string, number> {
+  return (
+    isObject(value) &&
+    Object.values(value).every((item) => typeof item === "number")
+  );
 }
 
-function isReconciliationSummary(value: unknown): value is ReconciliationSummary {
+function isReconciliationSummary(
+  value: unknown,
+): value is ReconciliationSummary {
   return (
     isObject(value) &&
     typeof value.invoices_processed === "number" &&
@@ -145,7 +180,9 @@ function isReconciliationResult(value: unknown): value is ReconciliationResult {
   );
 }
 
-function isReconciliationReport(value: unknown): value is ReconciliationReport {
+export function isReconciliationReport(
+  value: unknown,
+): value is ReconciliationReport {
   return (
     isObject(value) &&
     isReconciliationSummary(value.summary) &&
@@ -166,9 +203,11 @@ function isCsvValidationIssue(value: unknown): value is CsvValidationIssue {
   );
 }
 
-function isValidationPayload(
-  value: unknown,
-): value is { error: "validation_error"; message: string; issues: CsvValidationIssue[] } {
+function isValidationPayload(value: unknown): value is {
+  error: "validation_error";
+  message: string;
+  issues: CsvValidationIssue[];
+} {
   return (
     isObject(value) &&
     value.error === "validation_error" &&
@@ -194,12 +233,17 @@ interface FastApiValidationIssue {
   loc: unknown[];
 }
 
-function isFastApiValidationPayload(value: unknown): value is { detail: FastApiValidationIssue[] } {
+function isFastApiValidationPayload(
+  value: unknown,
+): value is { detail: FastApiValidationIssue[] } {
   return (
     isObject(value) &&
     Array.isArray(value.detail) &&
     value.detail.every(
-      (issue) => isObject(issue) && typeof issue.type === "string" && Array.isArray(issue.loc),
+      (issue) =>
+        isObject(issue) &&
+        typeof issue.type === "string" &&
+        Array.isArray(issue.loc),
     )
   );
 }

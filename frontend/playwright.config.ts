@@ -50,7 +50,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `npm run start -- --hostname ${E2E_WEB_HOST} --port ${E2E_WEB_PORT}`,
+      command: `"${process.execPath}" node_modules/next/dist/bin/next start --hostname ${E2E_WEB_HOST} --port ${E2E_WEB_PORT}`,
       cwd: ".",
       env: {
         ...process.env,

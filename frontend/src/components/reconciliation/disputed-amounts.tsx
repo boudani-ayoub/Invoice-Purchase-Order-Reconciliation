@@ -3,22 +3,35 @@ import { formatDecimalString } from "@/lib/formatters";
 
 interface DisputedAmountsProps {
   amounts: Record<string, string>;
+  title?: string;
+  emptyMessage?: string;
 }
 
-export function DisputedAmounts({ amounts }: DisputedAmountsProps) {
-  const entries = Object.entries(amounts).sort(([left], [right]) => left.localeCompare(right));
+export function DisputedAmounts({
+  amounts,
+  title = "Potential disputed amount",
+  emptyMessage = "No disputed amounts.",
+}: DisputedAmountsProps) {
+  const entries = Object.entries(amounts).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
 
   return (
     <Card className="shadow-none">
       <CardHeader>
-        <CardTitle>Potential disputed amount</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {entries.length ? (
           <dl className="divide-y">
             {entries.map(([currency, amount]) => (
-              <div key={currency} className="flex items-baseline justify-between gap-4 py-3 first:pt-0 last:pb-0">
-                <dt className="text-sm font-medium text-muted-foreground">{currency}</dt>
+              <div
+                key={currency}
+                className="flex items-baseline justify-between gap-4 py-3 first:pt-0 last:pb-0"
+              >
+                <dt className="text-sm font-medium text-muted-foreground">
+                  {currency}
+                </dt>
                 <dd className="font-mono text-lg font-semibold tabular-nums">
                   {formatDecimalString(amount)}
                 </dd>
@@ -26,7 +39,7 @@ export function DisputedAmounts({ amounts }: DisputedAmountsProps) {
             ))}
           </dl>
         ) : (
-          <p className="text-sm text-muted-foreground">No disputed amounts.</p>
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         )}
       </CardContent>
     </Card>

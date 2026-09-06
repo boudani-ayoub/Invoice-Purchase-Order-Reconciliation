@@ -7,6 +7,17 @@ interface IssuePresentation {
 }
 
 const ISSUE_PRESENTATION: Record<string, IssuePresentation> = {
+  RECEIPT_ITEM_MISMATCH: {
+    label: "Receipt item mismatch",
+    description:
+      "A receipt references the same PO line with a different item code.",
+    tone: "warning",
+  },
+  OVER_RECEIVED: {
+    label: "Over-received",
+    description: "Received quantity exceeds ordered quantity.",
+    tone: "warning",
+  },
   UNKNOWN_PO: {
     label: "Unknown purchase order",
     description: "The referenced purchase order was not found.",
@@ -14,7 +25,7 @@ const ISSUE_PRESENTATION: Record<string, IssuePresentation> = {
   },
   UNKNOWN_ITEM: {
     label: "Unknown item",
-    description: "The invoiced item does not match the referenced order line.",
+    description: "The referenced PO line or item could not be resolved.",
     tone: "destructive",
   },
   DUPLICATE_INVOICE: {
@@ -24,7 +35,8 @@ const ISSUE_PRESENTATION: Record<string, IssuePresentation> = {
   },
   SUPPLIER_MISMATCH: {
     label: "Supplier mismatch",
-    description: "The invoice supplier differs from the purchase order supplier.",
+    description:
+      "The invoice supplier differs from the purchase order supplier.",
     tone: "destructive",
   },
   CURRENCY_MISMATCH: {
@@ -49,7 +61,8 @@ const ISSUE_PRESENTATION: Record<string, IssuePresentation> = {
   },
   PRICE_MISMATCH: {
     label: "Price mismatch",
-    description: "The invoice unit price differs from the purchase order price.",
+    description:
+      "The invoice unit price differs from the purchase order price.",
     tone: "warning",
   },
 };

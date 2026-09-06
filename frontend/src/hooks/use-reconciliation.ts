@@ -6,20 +6,33 @@ import {
   ReconciliationRequestError,
   reconcileFiles,
 } from "@/lib/api/reconciliation";
-import { EMPTY_UPLOADS, type UploadField, type UploadFiles } from "@/constants/uploads";
-import type { ReconciliationErrorDetail, ReconciliationReport } from "@/types/reconciliation";
+import {
+  EMPTY_UPLOADS,
+  type UploadField,
+  type UploadFiles,
+} from "@/constants/uploads";
+import type { ReconciliationErrorDetail } from "@/types/reconciliation";
+import type { AnalysisMode, AnalysisReport } from "@/types/analysis";
+import { ANALYSIS_MODES } from "@/constants/analysis-modes";
+import { analyzeFiles } from "@/lib/api/analyses";
 
 function freshUploads(): UploadFiles {
   return { ...EMPTY_UPLOADS };
 }
 
-export function useReconciliation() {
+export function useReconciliation(mode?: AnalysisMode) {
   const [files, setFiles] = useState<UploadFiles>(freshUploads);
-  const [report, setReport] = useState<ReconciliationReport | null>(null);
+  const [report, setReport] = useState<AnalysisReport | null>(null);
   const [error, setError] = useState<ReconciliationErrorDetail | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const allFilesSelected = useMemo(() => Object.values(files).every(Boolean), [files]);
+  const allFilesSelected = useMemo(
+    () =>
+      ANALYSIS_MODES[mode ?? "three-way"].requiredSources.every((field) =>
+        Boolean(files[field]),
+      ),
+    [files, mode],
+  );
 
   const setFile = useCallback((field: UploadField, file: File | null) => {
     setFiles((current) => ({ ...current, [field]: file }));
@@ -35,7 +48,11 @@ export function useReconciliation() {
     setIsSubmitting(true);
     setError(null);
     try {
-      setReport(await reconcileFiles(files));
+      setReport(
+        mode
+          ? await analyzeFiles(mode, files)
+          : { ...(await reconcileFiles(files)), mode: "three-way" },
+      );
     } catch (caught) {
       setReport(null);
       setError(
@@ -46,7 +63,7 @@ export function useReconciliation() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [allFilesSelected, files, isSubmitting]);
+  }, [allFilesSelected, files, isSubmitting, mode]);
 
   const reset = useCallback(() => {
     setFiles(freshUploads());

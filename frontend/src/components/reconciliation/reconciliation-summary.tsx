@@ -4,7 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { ReconciliationSummary as Summary } from "@/types/reconciliation";
 
 interface ReconciliationSummaryProps {
-  summary: Summary;
+  summary: Pick<
+    Summary,
+    | "invoices_processed"
+    | "invoice_lines_processed"
+    | "matched_lines"
+    | "review_required_lines"
+  >;
 }
 
 export function ReconciliationSummary({ summary }: ReconciliationSummaryProps) {
@@ -42,7 +48,9 @@ export function ReconciliationSummary({ summary }: ReconciliationSummaryProps) {
           <CardContent className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {value}
+              </p>
             </div>
             <Icon aria-hidden="true" className={`size-5 ${tone}`} />
           </CardContent>

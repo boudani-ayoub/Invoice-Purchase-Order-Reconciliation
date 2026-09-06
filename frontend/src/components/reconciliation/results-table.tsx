@@ -23,16 +23,22 @@ import {
 } from "@/components/ui/table";
 import { getIssuePresentation, STATUS_PRESENTATION } from "@/constants/issues";
 import { formatDecimalString } from "@/lib/formatters";
-import type { ReconciliationResult } from "@/types/reconciliation";
+import type { InvoiceResult } from "@/types/analysis";
 
 type StatusFilter = "all" | "review" | "matched";
 
 interface ResultsTableProps {
-  results: ReconciliationResult[];
+  results: InvoiceResult[];
+  receiptCoverage?: boolean;
 }
 
-export function ResultsTable({ results }: ResultsTableProps) {
-  const hasReviewItems = results.some((result) => result.status === "REVIEW_REQUIRED");
+export function ResultsTable({
+  results,
+  receiptCoverage = false,
+}: ResultsTableProps) {
+  const hasReviewItems = results.some(
+    (result) => result.status === "REVIEW_REQUIRED",
+  );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     hasReviewItems ? "review" : "all",
   );
@@ -41,8 +47,11 @@ export function ResultsTable({ results }: ResultsTableProps) {
 
   const issueOptions = useMemo(
     () =>
-      [...new Set(results.flatMap((result) => result.issues))].sort((left, right) =>
-        getIssuePresentation(left).label.localeCompare(getIssuePresentation(right).label),
+      [...new Set(results.flatMap((result) => result.issues))].sort(
+        (left, right) =>
+          getIssuePresentation(left).label.localeCompare(
+            getIssuePresentation(right).label,
+          ),
       ),
     [results],
   );
@@ -54,12 +63,16 @@ export function ResultsTable({ results }: ResultsTableProps) {
         statusFilter === "all" ||
         (statusFilter === "review" && result.status === "REVIEW_REQUIRED") ||
         (statusFilter === "matched" && result.status === "MATCHED");
-      const matchesIssue = issueFilter === "all" || result.issues.includes(issueFilter);
+      const matchesIssue =
+        issueFilter === "all" || result.issues.includes(issueFilter);
       const matchesSearch =
         !query ||
-        [result.invoice_number, result.po_number, result.supplier_id, result.item_code].some(
-          (value) => value.toLowerCase().includes(query),
-        );
+        [
+          result.invoice_number,
+          result.po_number,
+          result.supplier_id,
+          result.item_code,
+        ].some((value) => value.toLowerCase().includes(query));
       return matchesStatus && matchesIssue && matchesSearch;
     });
   }, [issueFilter, results, search, statusFilter]);
@@ -77,7 +90,10 @@ export function ResultsTable({ results }: ResultsTableProps) {
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <div className="inline-flex w-fit rounded-lg border bg-card p-1" aria-label="Status filter">
+          <div
+            className="inline-flex w-fit rounded-lg border bg-card p-1"
+            aria-label="Status filter"
+          >
             {(
               [
                 ["all", "All"],
@@ -98,8 +114,14 @@ export function ResultsTable({ results }: ResultsTableProps) {
             ))}
           </div>
 
-          <Select value={issueFilter} onValueChange={(value) => setIssueFilter(value ?? "all")}>
-            <SelectTrigger aria-label="Filter by issue" className="w-full md:w-52">
+          <Select
+            value={issueFilter}
+            onValueChange={(value) => setIssueFilter(value ?? "all")}
+          >
+            <SelectTrigger
+              aria-label="Filter by issue"
+              className="w-full md:w-52"
+            >
               <SelectValue placeholder="All issues" />
             </SelectTrigger>
             <SelectContent>
@@ -133,8 +155,10 @@ export function ResultsTable({ results }: ResultsTableProps) {
       </div>
 
       <div className="rounded-xl border bg-card">
-        <Table>
-          <TableCaption className="sr-only">Filtered reconciliation result lines.</TableCaption>
+        <Table scrollLabel="Invoice analysis lines">
+          <TableCaption className="sr-only">
+            Filtered reconciliation result lines.
+          </TableCaption>
           <TableHeader>
             <TableRow>
               <TableHead>Invoice</TableHead>
@@ -143,9 +167,17 @@ export function ResultsTable({ results }: ResultsTableProps) {
               <TableHead>Item</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Issues</TableHead>
-              <TableHead className="text-right">Invoice / supported qty</TableHead>
-              <TableHead className="text-right">Invoice / PO price</TableHead>
-              <TableHead className="text-right">Potential dispute</TableHead>
+              <TableHead className="text-right">
+                Invoice / supported qty
+              </TableHead>
+              <TableHead className="text-right">
+                {receiptCoverage ? "Invoice unit price" : "Invoice / PO price"}
+              </TableHead>
+              <TableHead className="text-right">
+                {receiptCoverage
+                  ? "Potential unsupported amount"
+                  : "Potential dispute"}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -153,9 +185,13 @@ export function ResultsTable({ results }: ResultsTableProps) {
               filteredResults.map((result, index) => {
                 const status = STATUS_PRESENTATION[result.status];
                 return (
-                  <TableRow key={`${result.invoice_number}-${result.invoice_line_number}-${index}`}>
+                  <TableRow
+                    key={`${result.invoice_number}-${result.invoice_line_number}-${index}`}
+                  >
                     <TableCell>
-                      <span className="font-medium">{result.invoice_number}</span>
+                      <span className="font-medium">
+                        {result.invoice_number}
+                      </span>
                       <span className="block text-xs text-muted-foreground">
                         Line {result.invoice_line_number}
                       </span>
@@ -181,7 +217,11 @@ export function ResultsTable({ results }: ResultsTableProps) {
                             return (
                               <Badge
                                 key={code}
-                                variant={issue.tone === "destructive" ? "destructive" : "secondary"}
+                                variant={
+                                  issue.tone === "destructive"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
                                 title={issue.description}
                               >
                                 {issue.label}
@@ -200,20 +240,34 @@ export function ResultsTable({ results }: ResultsTableProps) {
                         : formatDecimalString(result.supported_quantity)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs tabular-nums">
-                      {formatDecimalString(result.invoice_unit_price)} /{" "}
-                      {result.po_unit_price === null
-                        ? "—"
-                        : formatDecimalString(result.po_unit_price)}
+                      {formatDecimalString(result.invoice_unit_price)}
+                      {"po_unit_price" in result ? (
+                        <>
+                          {" "}
+                          /{" "}
+                          {result.po_unit_price === null
+                            ? "—"
+                            : formatDecimalString(result.po_unit_price)}
+                        </>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm font-medium tabular-nums">
-                      {formatDecimalString(result.potential_disputed_amount)} {result.currency}
+                      {formatDecimalString(
+                        "potential_disputed_amount" in result
+                          ? result.potential_disputed_amount
+                          : result.potential_unsupported_amount,
+                      )}{" "}
+                      {result.currency}
                     </TableCell>
                   </TableRow>
                 );
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={9}
+                  className="h-24 text-center text-muted-foreground"
+                >
                   No lines match the current filters.
                 </TableCell>
               </TableRow>
