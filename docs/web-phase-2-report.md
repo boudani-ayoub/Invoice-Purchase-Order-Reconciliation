@@ -258,8 +258,15 @@ The existing Python 3.11 and 3.12 job remains intact. A separate `frontend` job 
 installs with `npm ci`, and runs lint, the Vitest suite, and the production build. The public build
 configuration is provided in workflow environment configuration rather than application source.
 
-At the time this report was generated, the final commits had not yet been pushed, so remote CI had
-not run for them. The final handoff records the pushed commit and observed workflow result.
+The implementation was pushed through commit `5587d7a`. GitHub Actions run
+[`34003810515`](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34003810515)
+completed successfully:
+
+```text
+Frontend     success
+Python 3.11  success
+Python 3.12  success
+```
 
 ## Scope
 
