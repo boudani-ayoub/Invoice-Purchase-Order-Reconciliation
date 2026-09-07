@@ -45,6 +45,7 @@ export interface CsvValidationIssue {
 }
 
 export type ReconciliationErrorDetail =
+  | { kind: "authorization" }
   | {
       kind: "validation";
       message: string;

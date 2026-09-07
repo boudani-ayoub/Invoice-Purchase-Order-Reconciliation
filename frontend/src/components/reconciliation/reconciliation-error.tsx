@@ -18,7 +18,10 @@ function fieldLabel(field: string): string {
     : field.replaceAll("_", " ");
 }
 
-export function ReconciliationError({ error, onRetry }: ReconciliationErrorProps) {
+export function ReconciliationError({
+  error,
+  onRetry,
+}: ReconciliationErrorProps) {
   if (error.kind === "validation") {
     return <ValidationIssues issues={error.issues} />;
   }
@@ -29,8 +32,8 @@ export function ReconciliationError({ error, onRetry }: ReconciliationErrorProps
         <AlertTriangle aria-hidden="true" />
         <AlertTitle>{fieldLabel(error.file)} file is too large</AlertTitle>
         <AlertDescription>
-          Choose a file no larger than {formatFileSize(error.maxBytes)}, then run the reconciliation
-          again.
+          Choose a file no larger than {formatFileSize(error.maxBytes)}, then
+          run the reconciliation again.
         </AlertDescription>
       </Alert>
     );
@@ -43,36 +46,47 @@ export function ReconciliationError({ error, onRetry }: ReconciliationErrorProps
         <AlertTriangle aria-hidden="true" />
         <AlertTitle>All three source files are required</AlertTitle>
         <AlertDescription>
-          Select {labels.length ? labels.join(", ") : "the missing source file"} and try again.
+          Select {labels.length ? labels.join(", ") : "the missing source file"}{" "}
+          and try again.
         </AlertDescription>
       </Alert>
     );
   }
 
   const content =
-    error.kind === "network"
+    error.kind === "authorization"
       ? {
-          icon: Unplug,
-          title: "The reconciliation service could not be reached",
-          message: "Check that the backend is running and try again.",
+          icon: AlertTriangle,
+          title: "Your access could not be verified",
+          message:
+            "Check your session and organization, then try again. If access was revoked, contact your administrator.",
         }
-      : error.kind === "timeout"
+      : error.kind === "network"
         ? {
             icon: Unplug,
-            title: "The reconciliation request timed out",
-            message: "The service may still be processing the files. Wait a moment, then try again.",
+            title: "The reconciliation service could not be reached",
+            message: "Check that the backend is running and try again.",
           }
-      : error.kind === "server"
-        ? {
-            icon: ServerCrash,
-            title: "Something went wrong while processing the reconciliation",
-            message: "The service returned an internal error. Please try again.",
-          }
-        : {
-            icon: AlertTriangle,
-            title: "The service returned an unexpected response",
-            message: "Check the frontend API configuration and try again.",
-          };
+        : error.kind === "timeout"
+          ? {
+              icon: Unplug,
+              title: "The reconciliation request timed out",
+              message:
+                "The service may still be processing the files. Wait a moment, then try again.",
+            }
+          : error.kind === "server"
+            ? {
+                icon: ServerCrash,
+                title:
+                  "Something went wrong while processing the reconciliation",
+                message:
+                  "The service returned an internal error. Please try again.",
+              }
+            : {
+                icon: AlertTriangle,
+                title: "The service returned an unexpected response",
+                message: "Check the frontend API configuration and try again.",
+              };
   const Icon = content.icon;
 
   return (

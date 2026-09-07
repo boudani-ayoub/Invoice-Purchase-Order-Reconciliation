@@ -1,12 +1,13 @@
 import { FileCheck2 } from "lucide-react";
 import Link from "next/link";
+import { ProtectedApp } from "@/components/auth/protected-app";
 import { ANALYSIS_HUB_PATH } from "@/constants/analysis-modes";
 
 import { ReconciliationWorkspace } from "@/components/reconciliation/reconciliation-workspace";
 
 export default function Home() {
   return (
-    <>
+    <ProtectedApp>
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-5 sm:px-6 lg:px-8">
           <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -37,6 +38,6 @@ export default function Home() {
           files.
         </div>
       </footer>
-    </>
+    </ProtectedApp>
   );
 }

@@ -1,4 +1,5 @@
-import { getApiBaseUrl, getReconciliationTimeoutMs } from "@/lib/config";
+import { getReconciliationTimeoutMs } from "@/lib/config";
+import { apiFetch } from "@/lib/api/transport";
 import type {
   CsvValidationIssue,
   ReconciliationErrorDetail,
@@ -59,7 +60,7 @@ export async function requestFiles(
   );
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}${path}`, {
+    response = await apiFetch(path, {
       method: "POST",
       body: formData,
       signal: abortController.signal,
@@ -75,6 +76,10 @@ export async function requestFiles(
   const payload = await readJson(response);
   if (response.ok) {
     return payload;
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new ReconciliationRequestError({ kind: "authorization" });
   }
 
   if (response.status === 413 && isFileTooLargePayload(payload)) {

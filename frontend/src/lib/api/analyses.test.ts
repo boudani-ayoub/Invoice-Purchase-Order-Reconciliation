@@ -3,10 +3,12 @@ import { ANALYSIS_MODES, analysisApiPath } from "@/constants/analysis-modes";
 import { analyzeFiles, isAnalysisReport } from "./analyses";
 import { ANALYSIS_REPORTS, INVOICE_PO_REPORT } from "@/test/fixtures/analyses";
 import type { UploadFiles } from "@/constants/uploads";
+import { rememberCsrf } from "@/lib/api/transport";
 
-beforeEach(() =>
-  vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test"),
-);
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.test");
+  rememberCsrf({ csrf_token: "test-csrf-proof" });
+});
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
