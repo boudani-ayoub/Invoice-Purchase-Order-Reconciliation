@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 from fastapi.testclient import TestClient
+from web_support import create_analysis_test_app as create_app
 
 import reconcile.web.app as web_app
 from reconcile import (
@@ -32,7 +33,7 @@ INVALID_PURCHASE_ORDERS = (
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    with TestClient(web_app.create_app()) as test_client:
+    with TestClient(create_app()) as test_client:
         yield test_client
 
 
@@ -94,7 +95,7 @@ def test_builtin_api_documentation_is_available(client: TestClient) -> None:
 def test_configured_frontend_origin_receives_narrow_cors_headers() -> None:
     origin = "http://localhost:3000"
 
-    with TestClient(web_app.create_app(allowed_origins=[origin])) as test_client:
+    with TestClient(create_app(allowed_origins=[origin])) as test_client:
         response = test_client.options(
             "/api/v1/reconcile",
             headers={
@@ -106,14 +107,14 @@ def test_configured_frontend_origin_receives_narrow_cors_headers() -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == origin
-    assert response.headers["access-control-allow-methods"] == "POST"
+    assert response.headers["access-control-allow-methods"] == "GET, POST"
     allowed_headers = response.headers["access-control-allow-headers"].lower().split(", ")
     assert "content-type" in allowed_headers
-    assert "access-control-allow-credentials" not in response.headers
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def test_unconfigured_frontend_origin_receives_no_cors_grant() -> None:
-    with TestClient(web_app.create_app(allowed_origins=["http://localhost:3000"])) as test_client:
+    with TestClient(create_app(allowed_origins=["http://localhost:3000"])) as test_client:
         response = test_client.options(
             "/api/v1/reconcile",
             headers={
@@ -132,7 +133,7 @@ def test_allowed_origins_are_loaded_from_environment(
     origin = "http://127.0.0.1:3000"
     monkeypatch.setenv(web_app.ALLOWED_ORIGINS_ENV, f" {origin}/, {origin} ")
 
-    with TestClient(web_app.create_app()) as test_client:
+    with TestClient(create_app()) as test_client:
         response = test_client.options(
             "/api/v1/reconcile",
             headers={
@@ -148,7 +149,7 @@ def test_allowed_origins_are_loaded_from_environment(
 def test_single_explicit_origin_string_is_not_split_into_characters() -> None:
     origin = "http://localhost:3000"
 
-    with TestClient(web_app.create_app(allowed_origins=origin)) as test_client:
+    with TestClient(create_app(allowed_origins=origin)) as test_client:
         response = test_client.options(
             "/api/v1/reconcile",
             headers={
@@ -163,7 +164,7 @@ def test_single_explicit_origin_string_is_not_split_into_characters() -> None:
 
 def test_wildcard_cors_origin_is_rejected() -> None:
     with pytest.raises(ValueError, match="does not accept wildcard origins"):
-        web_app.create_app(allowed_origins=["*"])
+        create_app(allowed_origins=["*"])
 
 
 def test_sample_response_is_exactly_the_existing_json_report(
@@ -252,7 +253,7 @@ def test_missing_upload_returns_422_without_running_reconciliation(
     files = upload_files()
     files.pop(missing_field)
 
-    with TestClient(web_app.create_app()) as test_client:
+    with TestClient(create_app()) as test_client:
         response = test_client.post("/api/v1/reconcile", files=files)
 
     assert response.status_code == 422
@@ -271,7 +272,7 @@ def test_oversized_upload_returns_413_without_running_reconciliation(
 
     monkeypatch.setattr(web_app, "_render_reconciliation", fail_if_called)
 
-    with TestClient(web_app.create_app(max_upload_bytes=limit)) as test_client:
+    with TestClient(create_app(max_upload_bytes=limit)) as test_client:
         response = test_client.post(
             "/api/v1/reconcile",
             files=upload_files(purchase_orders=b"x" * (limit + 1)),
@@ -332,7 +333,7 @@ def test_unexpected_failure_returns_generic_500_and_cleans_uploads(
 
     monkeypatch.setattr(web_app, "_render_reconciliation", fail_with_sensitive_detail)
 
-    with TestClient(web_app.create_app(), raise_server_exceptions=False) as test_client:
+    with TestClient(create_app(), raise_server_exceptions=False) as test_client:
         response = test_client.post("/api/v1/reconcile", files=upload_files())
 
     assert response.status_code == 500

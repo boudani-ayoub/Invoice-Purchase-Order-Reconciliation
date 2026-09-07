@@ -1,17 +1,17 @@
 """FastAPI adapter for stateless reconciliation requests."""
 
-import logging
 import os
 from collections.abc import Callable, Sequence
+from contextlib import asynccontextmanager
 from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
-from urllib.parse import urlsplit
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -24,6 +24,13 @@ from reconcile import (
     render_json_report,
 )
 from reconcile.analysis.models import AnalysisMode
+from reconcile.auth.config import CSRF_HEADER
+from reconcile.auth.config import origin as validate_origin
+from reconcile.auth.runtime import AuthRuntime
+from reconcile.auth.service_errors import AuthError
+from reconcile.web.auth import require_analysis
+from reconcile.web.auth import router as auth_router
+from reconcile.web.auth_body import AuthBodyLimitMiddleware
 from reconcile.web.reports import (
     InvoicePoReport,
     InvoiceReceiptReport,
@@ -31,6 +38,7 @@ from reconcile.web.reports import (
     ThreeWayReport,
     render_analysis,
 )
+from reconcile.web.safe_errors import SafeErrorsMiddleware
 
 ANALYSES_PATH = "/api/v1/analyses"
 
@@ -45,7 +53,6 @@ _INTERNAL_FILENAMES = {
     "invoices": "invoices.csv",
 }
 _FIELD_BY_FILENAME = {filename: field for field, filename in _INTERNAL_FILENAMES.items()}
-_LOGGER = logging.getLogger(__name__)
 
 
 class _FileTooLargeError(Exception):
@@ -59,30 +66,81 @@ def create_app(
     *,
     max_upload_bytes: int = MAX_UPLOAD_BYTES,
     allowed_origins: str | Sequence[str] | None = None,
+    auth: AuthRuntime | None = None,
 ) -> FastAPI:
-    """Create the stateless HTTP application."""
+    """Create the authenticated application; injected services are owned by their caller."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        if app.state.auth is None:
+            app.state.auth = await run_in_threadpool(AuthRuntime.from_environment)
+        try:
+            yield
+        finally:
+            if auth is None:
+                app.state.auth.close()
+
+    docs_enabled = (
+        auth.settings.docs_enabled
+        if auth
+        else os.environ.get(
+            "AUTH_DOCS_ENABLED", str(os.environ.get("APP_ENV") == "development")
+        ).lower()
+        == "true"
+    )
 
     application = FastAPI(
         title="Invoice / Purchase Order Reconciliation API",
         version=version(_DISTRIBUTION_NAME),
-        description=("Stateless HTTP access to the existing deterministic reconciliation engine."),
+        description="Authenticated organization-scoped access to stateless procurement analysis.",
+        lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url=None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
+    application.state.auth = auth
+    application.add_middleware(AuthBodyLimitMiddleware)
+    application.add_middleware(SafeErrorsMiddleware)
+    application.include_router(auth_router)
     configured_origins = _resolve_allowed_origins(allowed_origins)
     if configured_origins:
         application.add_middleware(
             CORSMiddleware,
             allow_origins=list(configured_origins),
-            allow_credentials=False,
-            allow_methods=["POST"],
-            allow_headers=["Content-Type"],
+            allow_credentials=True,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type", CSRF_HEADER],
         )
 
-    @application.exception_handler(Exception)
-    async def internal_error_handler(request: Request, error: Exception) -> JSONResponse:
-        _LOGGER.exception("Unhandled reconciliation API error", exc_info=error)
+    @application.middleware("http")
+    async def no_cache(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @application.exception_handler(AuthError)
+    async def auth_error_handler(request: Request, error: AuthError) -> JSONResponse:
         return JSONResponse(
-            status_code=500,
-            content={"error": "internal_error", "message": "Internal server error."},
+            status_code=error.status,
+            content={"error": error.code, "message": error.message},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @application.exception_handler(RequestValidationError)
+    async def input_error_handler(request: Request, error: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "invalid_input",
+                "message": "Check the supplied fields.",
+                "detail": [
+                    {"loc": item["loc"], "type": item["type"], "msg": item["msg"]}
+                    for item in error.errors()
+                ],
+            },
+            headers={"Cache-Control": "no-store"},
         )
 
     @application.get("/health", summary="Check API availability")
@@ -99,6 +157,7 @@ def create_app(
             422: {"description": "A required upload is missing or CSV validation failed."},
             500: {"description": "An unexpected internal error occurred."},
         },
+        dependencies=[Depends(require_analysis)],
     )
     async def reconcile_uploads(
         purchase_orders: Annotated[
@@ -129,7 +188,11 @@ def create_app(
             max_upload_bytes=max_upload_bytes,
         )
 
-    @application.post(f"{ANALYSES_PATH}/{AnalysisMode.INVOICE_PO}", response_model=InvoicePoReport)
+    @application.post(
+        f"{ANALYSES_PATH}/{AnalysisMode.INVOICE_PO}",
+        response_model=InvoicePoReport,
+        dependencies=[Depends(require_analysis)],
+    )
     async def invoice_po_uploads(
         purchase_orders: Annotated[UploadFile, File()],
         invoices: Annotated[UploadFile, File()],
@@ -141,7 +204,9 @@ def create_app(
         )
 
     @application.post(
-        f"{ANALYSES_PATH}/{AnalysisMode.INVOICE_RECEIPT}", response_model=InvoiceReceiptReport
+        f"{ANALYSES_PATH}/{AnalysisMode.INVOICE_RECEIPT}",
+        response_model=InvoiceReceiptReport,
+        dependencies=[Depends(require_analysis)],
     )
     async def invoice_receipt_uploads(
         receipts: Annotated[UploadFile, File()],
@@ -153,7 +218,11 @@ def create_app(
             max_upload_bytes=max_upload_bytes,
         )
 
-    @application.post(f"{ANALYSES_PATH}/{AnalysisMode.PO_RECEIPT}", response_model=PoReceiptReport)
+    @application.post(
+        f"{ANALYSES_PATH}/{AnalysisMode.PO_RECEIPT}",
+        response_model=PoReceiptReport,
+        dependencies=[Depends(require_analysis)],
+    )
     async def po_receipt_uploads(
         purchase_orders: Annotated[UploadFile, File()],
         receipts: Annotated[UploadFile, File()],
@@ -164,7 +233,11 @@ def create_app(
             max_upload_bytes=max_upload_bytes,
         )
 
-    @application.post(f"{ANALYSES_PATH}/{AnalysisMode.THREE_WAY}", response_model=ThreeWayReport)
+    @application.post(
+        f"{ANALYSES_PATH}/{AnalysisMode.THREE_WAY}",
+        response_model=ThreeWayReport,
+        dependencies=[Depends(require_analysis)],
+    )
     async def three_way_uploads(
         purchase_orders: Annotated[UploadFile, File()],
         receipts: Annotated[UploadFile, File()],
@@ -243,15 +316,10 @@ def _resolve_allowed_origins(
         if origin == "*":
             raise ValueError(f"{ALLOWED_ORIGINS_ENV} does not accept wildcard origins")
 
-        parsed = urlsplit(origin)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.netloc
-            or parsed.path
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError(f"Invalid origin configured in {ALLOWED_ORIGINS_ENV}: {value!r}")
+        try:
+            validate_origin(origin)
+        except ValueError:
+            raise ValueError(f"Invalid origin configured in {ALLOWED_ORIGINS_ENV}") from None
         if origin not in origins:
             origins.append(origin)
 

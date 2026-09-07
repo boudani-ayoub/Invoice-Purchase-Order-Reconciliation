@@ -7,11 +7,12 @@ from itertools import permutations
 
 import pytest
 from fastapi.testclient import TestClient
+from web_support import create_analysis_test_app as create_app
 
 from reconcile.analysis import analyze_invoice_po, analyze_invoice_receipt, analyze_po_receipt
 from reconcile.analysis.models import REQUIRED_SOURCES, AnalysisMode
 from reconcile.models import GoodsReceiptLine, InvoiceLine, PurchaseOrderLine
-from reconcile.web.app import ANALYSES_PATH, create_app
+from reconcile.web.app import ANALYSES_PATH
 
 DAY = date(2026, 1, 1)
 PO = PurchaseOrderLine("PO-1", 1, "SUP-1", DAY, "EUR", "ITEM-1", "Parts", Decimal(100), Decimal(10))
