@@ -5,10 +5,10 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 1 adds four stateless analysis workflows and an optional PostgreSQL
-foundation. The accepted three-way CLI and legacy API contracts remain available. Database
-storage is not connected to uploads: persistent user/company workflows wait for authenticated
-Product Phase 2/3. There is no login, history, admin dashboard, or inventory balance yet.
+**Status:** Product Phase 2 adds registration, verified email identity, secure server-side sessions,
+and organization-scoped authorization to all four analysis workflows. The CLI remains account-free
+and database-free. Financial uploads and results are still temporary: history, business CRUD,
+admin screens, and inventory balances are not implemented.
 
 ## Choose a workflow
 
@@ -191,22 +191,35 @@ directory. Existing reports are refused by default; `--force` explicitly permits
 | `3` | Input or CSV validation error |
 | `4` | Expected output/filesystem error |
 
-## Web API — MVP
+## Authenticated web API
 
 The optional FastAPI layer exposes the four analysis services over HTTP. The legacy three-way
 route retains the Phase D JSON representation. The CLI needs no web dependencies.
 
-Install the web and test extras, then start the development server:
+Install the optional product dependencies, provision the separate database roles, and apply the
+migrations using [the database guide](docs/database-development.md). Configure private environment
+variables using [.env.example](.env.example); the server does not load dotenv files automatically.
+Then start the server:
 
 ```bash
-python -m pip install -e ".[dev,web]"
+python -m pip install -e ".[dev,web,db,auth]"
 python -m uvicorn reconcile.web.app:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000/docs` for the generated OpenAPI interface. The MVP provides:
+Development can enable `/docs`; production documentation is disabled by default. The API provides:
 
 ```text
 GET  /health
+GET  /api/v1/auth/csrf
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/logout
+GET  /api/v1/auth/me
+POST /api/v1/auth/select-organization
+POST /api/v1/auth/forgot-password
+POST /api/v1/auth/reset-password
+POST /api/v1/auth/verify-email
+POST /api/v1/auth/resend-verification
 POST /api/v1/reconcile
 POST /api/v1/analyses/invoice-po
 POST /api/v1/analyses/invoice-receipt
@@ -214,10 +227,16 @@ POST /api/v1/analyses/po-receipt
 POST /api/v1/analyses/three-way
 ```
 
-Submit the three required multipart fields:
+All five analysis POST routes require a valid session, current organization membership, and CSRF
+proof. Sign in through the browser UI to run them. For an API client, bootstrap `/api/v1/auth/csrf` into a
+cookie jar, send its returned `csrf_token` as `X-CSRF-Token` with a trusted `Origin` on registration
+and login, and retain the fresh cookies and proof returned by login. A three-way request then uses:
 
 ```bash
 curl -X POST \
+  -b "$COOKIE_JAR" \
+  -H "Origin: $FRONTEND_ORIGIN" \
+  -H "X-CSRF-Token: $CSRF_PROOF" \
   -F "purchase_orders=@examples/sample_data/purchase_orders.csv" \
   -F "receipts=@examples/sample_data/goods_receipts.csv" \
   -F "invoices=@examples/sample_data/invoices.csv" \
@@ -229,23 +248,27 @@ request directory, reconciled, and removed before the response completes. Client
 extensions, and MIME types are not trusted; the existing strict CSV loaders remain authoritative.
 The service stores no uploads or results.
 
-Invalid CSV returns a structured `422` response, oversized files return `413`, and missing
-multipart fields use FastAPI's `422` request validation. Browser origins are denied by default and
-may be allowed explicitly with `RECONCILE_ALLOWED_ORIGINS`; wildcard origins and credentialed CORS
-requests are not enabled. This MVP has no authentication or persistence and must not be exposed
-anonymously to the public internet with sensitive financial data.
+Invalid CSV returns `422`, oversized files return `413`, missing/expired sessions return `401`,
+and failed membership/CSRF checks return `403`. Explicitly trusted origins receive credentialed
+CORS for GET/POST and the CSRF header; wildcard origins are rejected. Sensitive responses use
+`Cache-Control: no-store`. Authentication does not by itself approve public production deployment.
 
-## Frontend — MVP
+## Frontend
 
 The frontend is a typed Next.js application under `frontend/`. A four-workflow hub opens dedicated
 pages with a shared upload workspace, visible control limitations, mode-specific results,
 structured errors, and API-owned Decimal-string totals. Invoice results retain filters and a
 responsive horizontally scrollable table.
 
-Run the backend with the frontend development origin explicitly allowed:
+Use the same browser-facing hostname for both services. After provisioning the database and
+private settings, an explicit local-only mail-free setup can use:
 
 ```powershell
-$env:RECONCILE_ALLOWED_ORIGINS="http://localhost:3000"
+$env:APP_ENV="development"
+$env:FRONTEND_PUBLIC_URL="http://127.0.0.1:3000"
+$env:RECONCILE_ALLOWED_ORIGINS="http://127.0.0.1:3000"
+$env:AUTH_REQUIRE_VERIFICATION="false"
+$env:AUTH_MAIL_MODE="disabled"
 python -m uvicorn reconcile.web.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -254,11 +277,18 @@ In another terminal, create the local public configuration and start Next.js:
 ```powershell
 Set-Location frontend
 Copy-Item .env.example .env.local
-npm install
-npm run dev
+npm ci
+npm run dev -- --hostname 127.0.0.1
 ```
 
-Open `http://localhost:3000`. `NEXT_PUBLIC_API_BASE_URL` is the browser-visible FastAPI origin and
+Open `http://127.0.0.1:3000/register`, then sign in. Disabled local mail means recovery messages
+are not delivered; configure SMTP to exercise delivery, including verification. Production
+rejects the verification bypass. Passwords accept 15–128 characters, spaces and Unicode, without
+composition rules. `/login`, `/forgot-password`, `/reset-password`, and `/verify-email` provide
+the account flows. The authenticated shell shows the user, organization, reconciliation, and
+sign out; multiple active memberships require a selection.
+
+`NEXT_PUBLIC_API_BASE_URL` is the browser-visible FastAPI origin and
 must contain only an HTTP or HTTPS origin. It is public configuration, not a secret. Do not place
 tokens or credentials in `NEXT_PUBLIC_*` variables. `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS`
 controls how long the browser waits for a response and defaults to 120 seconds. A browser timeout
@@ -288,10 +318,11 @@ Dates use `YYYY-MM-DD`; currencies use three uppercase letters; quantities are p
 prices are non-negative decimals. Leading/trailing whitespace, malformed numbers, invalid UTF-8,
 wrong-width rows, and inconsistent document fields are rejected rather than silently cleaned.
 
-## Optional database foundation
+## Database and identity boundaries
 
-`pip install -e ".[db]"` adds SQLAlchemy 2, Alembic, and psycopg 3. PostgreSQL is never required
-for the CLI, stateless API, or analysis pages. Organizations, users, memberships, source metadata,
+The `db` extra adds SQLAlchemy 2, Alembic, and psycopg 3; `auth` adds Argon2id and email validation.
+PostgreSQL is required for the authenticated web product, never for the CLI. Organizations, users,
+memberships, source metadata,
 suppliers, items, document headers/lines, analysis runs, findings, and immutable result snapshots
 are modeled in an isolated persistence package. Duplicate invoice occurrences and unresolved
 source references remain persistable.
@@ -299,7 +330,11 @@ source references remain persistable.
 See [the data model](docs/data-model-v1.md), [database setup and integration tests](docs/database-development.md),
 and [security roadmap](docs/security-roadmap.md). Every tenant business row has organization
 ownership, composite foreign keys, and forced PostgreSQL row-level security. This is a database
-boundary for verified future service transactions, not authorization for anonymous HTTP traffic.
+boundary reached only after server-side session and membership verification. A separate restricted
+identity login can access accounts/sessions but not procurement tables. The schema owner is used
+only for migrations. Credentials are Argon2id hashes; only hashes of opaque session and email
+tokens are stored. See [authentication architecture](docs/authentication-architecture.md),
+[the threat model](docs/threat-model-auth.md), and [the Phase 2 report](docs/product-phase-2-report.md).
 
 ## Engineering decisions
 
@@ -335,7 +370,7 @@ multipart parsing are isolated in the `web` extra; the local CLI does not requir
 Run the same checks used by CI:
 
 ```bash
-python -m pip install -e ".[dev,web]"
+python -m pip install -e ".[dev,web,db,auth]"
 python -m pytest -vv
 python -m ruff check .
 python -m ruff format --check .
@@ -350,18 +385,22 @@ npm test -- --run
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8010 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm audit
 ```
 
 The workflow in `.github/workflows/ci.yml` performs the complete core and web suite on Python 3.11
-and 3.12 after installing both extras. It also runs the CLI sample and installs the built wheel
+and 3.12 after installing all optional product/test extras. It also runs the CLI sample and installs the built wheel
 without dependencies in a clean environment, proving core imports and the CLI remain independent
-of FastAPI. A separate Node 24 job installs the API web extra and frontend lockfile, lints, runs
+of FastAPI, database, and authentication dependencies. A separate Node 24 job installs the product
+API extras and frontend lockfile, lints, runs
 Vitest, builds the production Next.js application, installs Chromium, and exercises that build
-against a real Uvicorn process with Playwright and axe-core. No `PYTHONPATH` shortcut is used.
+against a real authenticated Uvicorn process and disposable PostgreSQL database with Playwright
+and axe-core. No `PYTHONPATH` shortcut is used. Set `TEST_DATABASE_ADMIN_URL` before database or
+browser checks; it must identify an explicitly disposable local/CI PostgreSQL service.
 Dependabot checks dependencies and official GitHub Actions weekly.
 
-A separate PostgreSQL 17 job installs `.[dev,db]`, migrates a clean database as a schema owner,
-and tests constraints and RLS with a distinct non-owner runtime login. Configure
+A separate PostgreSQL 17 job installs `.[dev,web,db,auth]`, tests clean and Phase 1 upgrades,
+and tests auth, constraints, and RLS with distinct non-owner identity/runtime logins. Configure
 `TEST_DATABASE_ADMIN_URL` and run `python -m pytest tests/database -vv` to reproduce it locally.
 The existing core wheel smoke still installs no optional dependencies.
 
@@ -371,12 +410,13 @@ arrive automatically; the workflow grants only read access to repository content
 ## Security
 
 CSV content is data, never shell input or executable code. The optional API adds a network boundary
-with upload limits and temporary request storage, but intentionally has no authentication yet.
+with authenticated membership checks, CSRF, upload limits, and temporary request storage.
 Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deploying the service.
 
 ## Known limits
 
-- No authentication, HTTP tenant authorization, persistent imports, or saved run history.
+- No MFA, SSO, member-management UI, persistent imports, or saved run history.
+- Production SMTP must be configured and verified; no durable mail queue or auth-state purge job.
 - The API is a local/development MVP, not a public production financial service.
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
 - Invoice workflows report invoice findings; the separate fulfillment workflow exposes orphan receipts.
@@ -388,8 +428,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next product phase
 
-Product Phase 2 establishes identity, secure sessions, organization membership, tenant authorization,
-and protected routes. Persistent runs and history follow in Phase 3. The complete sequence through
+Product Phase 3 — persistent reconciliation runs, provenance, meaningful CRUD, history, and
+actor-aware audit events. This is the next step, not part of Phase 2. The complete sequence through
 authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
 
 ## Project history
@@ -400,7 +440,8 @@ The implementation decisions and verification evidence are preserved in
 [`Web Phase 1`](docs/web-phase-1-report.md) and
 [`Web Phase 2`](docs/web-phase-2-report.md), then the
 [`Web Phase 3`](docs/web-phase-3-report.md) hardening report and
-[`Product Phase 1`](docs/product-phase-1-report.md).
+[`Product Phase 1`](docs/product-phase-1-report.md) and
+[`Product Phase 2`](docs/product-phase-2-report.md).
 
 ## License
 

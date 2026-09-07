@@ -2,10 +2,11 @@
 
 ## Readiness boundary
 
-The current application is a hardened stateless MVP, not an anonymous public financial service.
-It has no authentication, HTTP tenant authorization, rate limiting, persistent product workflows,
-or actor-aware audit trail. Keep it on a trusted network until those controls have a dedicated
-threat model. Optional PostgreSQL schema/RLS infrastructure is not connected to HTTP requests.
+The product now has first-party authentication, server-side sessions, tenant authorization, CSRF,
+and PostgreSQL-backed identifier throttles. Analysis files/results remain request-scoped. This is
+not approval for a public financial service: network resource limits, operational recovery,
+deployment-specific threat review, and monitoring are still required. Business history and
+actor-aware audit events are not implemented. See [the auth threat model](threat-model-auth.md).
 
 The preferred topology uses one public HTTPS origin:
 
@@ -111,7 +112,11 @@ NEXT_PUBLIC_API_BASE_URL=https://api.reconcile.example.com
 RECONCILE_ALLOWED_ORIGINS=https://app.reconcile.example.com
 ```
 
-Comma-separated additional trusted origins are supported. Wildcards and credentialed CORS are not.
+Also set `FRONTEND_PUBLIC_URL` to the trusted frontend origin. Comma-separated additional trusted
+origins are supported. GET/POST credentialed CORS allows Content-Type and X-CSRF-Token only for
+the explicit allow-list; wildcards are rejected. Separate hosts must be same-site over HTTPS for
+SameSite=Strict cookies. Unrelated cross-site frontend/API deployments are not supported by this
+cookie policy. Prefer the same-origin topology instead of weakening the cookies.
 
 ## Security headers and browser resources
 
@@ -137,17 +142,56 @@ do not add broad host wildcards or `unsafe-eval` to make a broken production pol
 - Keep Nginx, Node.js, Python, FastAPI, Uvicorn, and multipart dependencies patched. Run `npm audit`,
   `python -m pip check`, the test suites, and the production build before promotion.
 
-Authentication, authorization, rate limits, CSRF assumptions, audit events, data retention, and
-incident response must be designed before this profile is considered internet-facing production.
+Network/IP rate limits, bounded concurrency, audit/retention, and incident response must be
+operational before this profile is considered internet-facing production. Account buckets alone
+cannot stop an attacker rotating identifiers. Never derive trusted IPs from arbitrary forwarded
+headers. Apply a small auth-location body limit and suitable proxy connection/timeout limits in
+addition to the application's 16 KiB JSON bound; multipart may be parsed/spooled before route
+dependencies reject unauthorized analyses.
 
-## Optional PostgreSQL foundation
+## Required private authentication configuration
 
 The four `/api/v1/analyses/*` routes and legacy `/api/v1/reconcile` share the same upload boundary.
 The 32 MiB total proxy ceiling accommodates the three-file mode; two-file routes declare only
-their required inputs. Neither the CLI nor API needs a database URL or database packages.
+their required inputs. Only the CLI can run without a database URL or optional packages.
 
 Database development and migration commands are in [database-development.md](database-development.md).
-Provision separate migration and runtime roles; never expose `DATABASE_URL` in `NEXT_PUBLIC_*`
-configuration. Do not point a future request service at a schema-owner, superuser, or BYPASSRLS
-connection. Keep PostgreSQL on a private network and introduce persistent HTTP access only after
-Product Phase 2 verifies identity, organization membership, and permissions.
+Provision separate migration, identity, and tenant-runtime logins. Set `DATABASE_URL` to the
+runtime login and `IDENTITY_DATABASE_URL` to the identity login only after owner-run migrations.
+HTTP startup rejects owner/admin/both-group connections. Keep PostgreSQL private, authenticate
+with strong unique credentials, and use `sslmode=verify-full` with an appropriate trust root for
+remote connections. Never expose database or SMTP settings through `NEXT_PUBLIC_*`.
+
+Use [the backend example](../.env.example) as a checklist, not working production credentials:
+
+- Explicit `APP_ENV=production`; `FRONTEND_PUBLIC_URL` and trusted origins use HTTPS.
+- A privately generated `AUTH_CSRF_SECRET` of at least 32 random bytes, URL-safe base64. All
+  workers must share it. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+  in a private setup session, not build logs. Rotation invalidates existing CSRF proofs;
+  bootstrap gets a fresh proof. Revoke sessions separately for a session-compromise response.
+- `AUTH_REQUIRE_VERIFICATION=true`; `AUTH_MAIL_MODE=smtp`; SMTP host/sender and either SSL
+  (default port 465) or STARTTLS (configure the provider's port), with certificate validation.
+  Store SMTP credentials in the platform secret manager. Send a real verification/recovery test
+  before release. Startup validates configuration, not provider delivery or DNS authentication.
+- Default 30-minute idle / 12-hour absolute sessions, 24-hour verification and 30-minute reset
+  tokens. Login allows five attempts per identifier per 15 minutes; registration, resend, and
+  recovery each allow three per hour. Tune using measured resource budgets.
+- `AUTH_DOCS_ENABLED=false` by default in production; `AUTH_REGISTRATION_ENABLED=false` can close
+  public registration without disabling existing accounts.
+
+Production cookies are Secure, HttpOnly, SameSite=Strict, Path=/, no Domain, and __Host-prefixed.
+Use a single browser-facing hostname consistently in HTTP development too. Mail can be disabled
+only in explicit development with verification disabled; no secret links are printed or delivered.
+
+API identity/report/error responses use no-store. Do not log Cookie, Set-Cookie, Authorization,
+X-CSRF-Token, bodies, or query strings. Avoid SQL echo and driver parameter logging. PostgreSQL
+error DETAIL can contain failed row values: restrict database logs, use terse error verbosity and
+disable parameter logging (`log_parameter_max_length=0`, `log_parameter_max_length_on_error=0`)
+as appropriate for the deployed cluster; see [PostgreSQL logging settings](https://www.postgresql.org/docs/17/runtime-config-logging.html).
+Mail-provider and browser trace artifacts need equivalent
+access/retention controls. Error-class-only application logging deliberately sacrifices detailed
+tracebacks; use sanitized operational metrics for diagnosis.
+
+Expired session/token/throttle records are not automatically purged in Phase 2. Plan bounded,
+privileged retention jobs and monitor table/index growth before public exposure; normal HTTP roles
+have no DELETE privilege. Back up account state and test recovery with dedicated operator access.

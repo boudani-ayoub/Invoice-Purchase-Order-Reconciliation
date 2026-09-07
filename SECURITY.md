@@ -44,16 +44,17 @@ it with ordinary user privileges and review paths before using `--force`.
 - MIME types and filename extensions are not security checks. The existing strict UTF-8 CSV
   parser and schema validation remain authoritative. Structured validation failures return HTTP
   422 without exposing temporary server paths.
-- Unexpected failures return a generic HTTP 500 payload. Detailed exceptions remain in server
-  logs rather than HTTP responses.
+- Unexpected failures return a generic HTTP 500 payload. An ASGI error boundary logs only the
+  exception class, preventing driver details from escaping to Uvicorn traceback logging.
 - Browser access is denied by default. `RECONCILE_ALLOWED_ORIGINS` accepts a comma-separated list
-  of exact HTTP or HTTPS origins. Wildcards are rejected, credentials are disabled, and the CORS
-  policy permits only the reconciliation `POST` method and its content-type header.
-- The API has no database, upload storage, result history, authentication, or authorization. It is
-  intended for local development and trusted environments only.
+  of exact HTTP or HTTPS origins. Wildcards/credential-bearing origins are rejected. Credentialed
+  CORS permits GET/POST, Content-Type, and X-CSRF-Token only for the explicit allow-list.
+- Every analysis endpoint requires a live server-side session, active user/organization/membership,
+  centralized RUN_ANALYSIS permission, trusted Origin, and a signed session-bound CSRF proof.
+  PostgreSQL stores identity and session state, not uploaded files or analysis results.
 - Do not expose the MVP anonymously to the public internet with sensitive financial data. A
-  production deployment requires HTTPS, explicit trusted origins, authentication and
-  authorization, deployment-layer request limits, timeouts, logging controls, and a new threat
+  production deployment requires HTTPS, explicit trusted origins, deployment-layer request limits,
+  timeouts, logging controls, tested account recovery, and a deployment-specific threat
   review.
 
 ## Frontend boundary
@@ -76,26 +77,53 @@ it with ordinary user privileges and review paths before using `--force`.
   the deployment proxy. A broader script/style/connect CSP requires a deployment-specific policy
   and must not be approximated with unsafe directives or broad wildcards.
 - The application loads no remote fonts, scripts, analytics, or other third-party browser assets.
-- There are no user accounts, tokens, or authentication flows. The current frontend does not make
-  anonymous public deployment appropriate.
+- The session is an opaque HttpOnly cookie. CSRF proofs and identity display data remain in memory;
+  neither localStorage, sessionStorage, nor IndexedDB holds credentials. Frontend guards are UX;
+  FastAPI is authoritative. Logout and organization changes clear the current workspace.
+- Recovery/verification tokens arrive in URL fragments, are removed from the URL on form mount,
+  and require explicit submission. There are no analytics or third-party scripts on these pages.
 
-## Optional persistence boundary
+## Identity and persistence boundary
 
-The `db` extra adds PostgreSQL infrastructure under `reconcile.persistence`. It is not imported by
-the CLI or stateless HTTP handlers, and uploads/results are not saved by current workflows.
-There are no public organization, user, invoice, run-history, or other company-data CRUD routes.
+The CLI does not import the optional auth/database/web packages. HTTP uses separate limited
+identity and tenant database connections. Uploads/results are not saved by current workflows.
+There are no business CRUD, run-history, member-administration, or workflow routes.
+
+Passwords use Argon2id (64 MiB, three iterations, four lanes), salted by argon2-cffi, with
+rehash-on-login. The policy is 15–128 Unicode code points with spaces allowed, no trimming or
+normalization, and no composition rules. Auth JSON is bounded to 16 KiB before parsing/hashing.
+Unknown-account login performs dummy verification; PostgreSQL-backed HMAC identifier buckets
+enforce temporary login and mail/registration limits across workers. This does not prevent all
+timing enumeration or distributed DoS. See the [auth threat model](docs/threat-model-auth.md).
+
+Sessions and mail tokens use 256 bits of randomness; only SHA-256 hashes are persisted. Sessions
+have a 30-minute idle and 12-hour absolute lifetime. Login and organization switches issue new
+session/CSRF cookies. Logout revokes the server record; reset atomically changes the password,
+consumes tokens, and revokes all sessions. Production uses __Host- cookies, Secure, HttpOnly,
+SameSite=Strict, Path=/, and no Domain. Weaker local cookies require explicit development mode
+and have different names. Production rejects disabled verification and non-HTTPS browser origins.
+
+Verification/reset tokens are single-use and expire after 24 hours/30 minutes respectively.
+SMTP requires certificate-verified TLS. Private settings and messages omit secret values from
+repr; failures log no token, address, password, or exception detail. Production startup requires
+SMTP configuration; delivery failures emit a generic operational event and users can request a
+new link. There is no durable delivery queue. Explicit mail-disabled development has no recovery
+delivery. Protect PostgreSQL, SMTP-provider, proxy, and test-artifact logs separately.
 
 Tenant tables carry organization ownership, composite foreign keys, and ENABLE/FORCE RLS policies
 with both read and write predicates. Missing transaction context fails closed. `tenant_session`
 uses bound transaction-local context, tested across committed and rolled-back transactions on a
 reused connection. It accepts an already verified organization UUID; it does not establish identity
-or membership. Phase 2 must derive that context from authenticated authorization. A browser-supplied
+or membership. Phase 2 derives that context from authenticated authorization. A browser-supplied
 organization ID is only a selector.
 
 The provisioned runtime role does not own tables and must not have superuser/BYPASSRLS. It has no
 users access, identity-management writes, schema creation, DELETE, or TRUNCATE privileges. Schema
 migrations use a separate role. `DATABASE_URL` stays private and configuration errors do not reveal
-its value. Financial fields use finite NUMERIC/Decimal constraints. Duplicates and unresolved
+its value. `reconcile_identity` uses role-specific policies on identity/authentication records;
+it may create organizations/memberships but cannot update their roles/statuses or access any
+procurement table. Runtime cannot read credentials/sessions. Both are checked at startup.
+Financial fields use finite NUMERIC/Decimal constraints. Duplicates and unresolved
 references are retained as evidence; discrepancies are not rejected by agreement constraints.
 
 No raw uploaded bytes or temporary paths are stored. Result snapshots carry explicit versions and
@@ -105,12 +133,14 @@ DDL and can disable protections; database administration is a separate trust bou
 
 See [data-model-v1.md](docs/data-model-v1.md) and the
 [ASVS 5.0 security roadmap](docs/security-roadmap.md). Reviewing that checklist is not certification
-or a claim of production security. Database RLS does not protect unauthenticated HTTP traffic.
+or a claim of production security. Arbitrary SQL execution under the runtime role can set its own
+tenant context; RLS complements application authorization, not application-compromise isolation.
 
 ## Dependencies and data
 
 The core application has no third-party runtime dependencies. FastAPI, Uvicorn, and multipart
-parsing are isolated in the optional `web` dependency group; HTTP testing tools remain in `dev`.
+parsing are isolated in `web`, SQLAlchemy/Alembic/psycopg in `db`, and Argon2/email validation in
+`auth`; HTTP testing tools remain in `dev`. The web product requires all three runtime extras.
 Dependabot monitors these packages and GitHub Actions weekly. The files under
 `examples/sample_data` are deterministic synthetic fixtures, not customer or supplier records.
 
@@ -120,7 +150,8 @@ Avoid including sensitive data in a public issue. Use the repository's private v
 reporting option under the GitHub **Security** tab when available. Otherwise, contact the
 repository owner through the GitHub profile to agree on a private reporting channel.
 
-A future public deployment with authentication, authorization, and persistence will require a
-separate threat model. This policy does not claim production readiness or compliance certification.
+A public deployment still requires operational threat review, network-level resource limits,
+tested backup/restore, retention, and incident response. MFA, SSO, and actor-aware business audits
+remain future work. This policy does not claim production readiness or compliance certification.
 The current reverse-proxy baseline and its remaining requirements are documented in
 [`docs/deployment.md`](docs/deployment.md).
