@@ -14,8 +14,9 @@ Financial uploads remain temporary; no business runs, history, CRUD, or AP workf
 - Implementation commits: `b59c60b` identity/persistence, `30565fc` protected API, `d178113`
   authenticated frontend, and `2a795a5` security regression/CI. The documentation commit containing
   this report is the ending revision of this phase; its hash is recorded in the completion message.
-- Push status: not pushed. Remote GitHub Actions has not run for these changes. No history was
-  rewritten and no force push was used.
+- Final remote evidence: pushed to `main` at `bde0726e84a578cc8946f9d8440ead57bbf3e355`.
+  [GitHub Actions run 34159230108](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34159230108)
+  completed successfully. No history was rewritten and no force push was used.
 
 ## Reasoning and scope decisions
 
@@ -195,7 +196,10 @@ were used for testing.
 CI retains Python 3.11/3.12, PostgreSQL integration, and Node 24 frontend checks. Database and
 browser jobs install the required auth extras. The browser job has PostgreSQL and launches real
 authenticated services through deterministic readiness checks. The no-dependency CLI wheel smoke
-remains. Remote CI has not run because this phase has not been pushed.
+remains. Remote run `34159230108` completed successfully for
+`bde0726e84a578cc8946f9d8440ead57bbf3e355`. All four jobs passed:
+Python 3.11, Python 3.12, PostgreSQL and authentication integration, and Frontend and authenticated
+browser verification. This final evidence was verified after the Phase 2 push.
 
 This is not a public production deployment approval. Remaining work includes MFA/SSO evaluation,
 network/IP and concurrency limits, bounded auth-state retention, tested backups/restore, real SMTP
