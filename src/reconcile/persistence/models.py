@@ -103,6 +103,7 @@ class User(Record, Base):
     )
     email: Mapped[str] = mapped_column(Text, unique=True)
     display_name: Mapped[str] = mapped_column(Text)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[RecordStatus] = mapped_column(
         enum_type(RecordStatus), server_default=RecordStatus.ACTIVE
     )
