@@ -33,7 +33,7 @@ jobs:
       - name: Install project
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,web]"
+          python -m pip install -e ".[dev,web,db,auth]"
 
       - name: Run tests
         run: python -m pytest -vv
@@ -79,7 +79,7 @@ jobs:
             --output "${RUNNER_TEMP}/wheel-sample-report.json"
 
   database:
-    name: PostgreSQL integration
+    name: PostgreSQL and authentication integration
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -107,13 +107,25 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install database and test dependencies
-        run: python -m pip install -e ".[dev,db]"
+        run: python -m pip install -e ".[dev,web,db,auth]"
       - name: Verify clean migrations, data integrity, and tenant isolation
         run: python -m pytest tests/database -vv
 
   frontend:
-    name: Frontend
+    name: Frontend and authenticated browser verification
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: frontend
@@ -121,6 +133,7 @@ jobs:
       E2E_PYTHON_EXECUTABLE: python
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8010
       NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS: 120000
+      TEST_DATABASE_ADMIN_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
 
     steps:
       - name: Check out repository
@@ -144,7 +157,7 @@ jobs:
 
       - name: Install API dependencies
         working-directory: ${{ github.workspace }}
-        run: python -m pip install -e ".[web]"
+        run: python -m pip install -e ".[web,db,auth]"
 
       - name: Install frontend dependencies
         run: npm ci
@@ -157,6 +170,9 @@ jobs:
 
       - name: Run frontend tests
         run: npm test -- --run
+
+      - name: Audit frontend dependencies
+        run: npm audit
 
       - name: Build frontend
         run: npm run build

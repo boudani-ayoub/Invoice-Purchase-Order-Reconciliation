@@ -39,14 +39,14 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `${JSON.stringify(pythonExecutable)} -m uvicorn reconcile.web.app:app --host ${E2E_API_HOST} --port ${E2E_API_PORT}`,
+      command: `${JSON.stringify(pythonExecutable)} -m scripts.product_e2e --host ${E2E_API_HOST} --port ${E2E_API_PORT} --frontend-origin ${E2E_WEB_ORIGIN}`,
       cwd: "..",
       env: {
         ...process.env,
         RECONCILE_ALLOWED_ORIGINS: E2E_WEB_ORIGIN,
       },
       url: `${E2E_API_ORIGIN}/health`,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {

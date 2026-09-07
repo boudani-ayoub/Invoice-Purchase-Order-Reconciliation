@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./auth-fixture";
 import {
   ANALYSIS_MODES,
   ANALYSIS_HUB_PATH,

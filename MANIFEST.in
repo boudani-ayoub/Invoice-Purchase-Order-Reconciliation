@@ -1,6 +1,8 @@
 include LICENSE README.md SECURITY.md
+include .env.example
 include alembic.ini
 recursive-include migrations *.py *.mako
 recursive-include tests *.py
+recursive-include scripts *.py
 recursive-include docs *.md
 recursive-include examples/sample_data *.csv
