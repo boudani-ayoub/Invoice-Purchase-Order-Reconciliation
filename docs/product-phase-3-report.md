@@ -11,8 +11,8 @@ for that starting HEAD: Python 3.11, Python 3.12, PostgreSQL/auth, and frontend/
 Accepted Phase 2 baseline: 385 Python tests (109 PostgreSQL), 47 frontend tests, and 24 browser
 tests. The Python and frontend baselines were rerun before implementation. Phase 3 adds saved
 results and useful run metadata CRUD; it does not add AP workflow, dashboards, administration,
-inventory, or permanent deletion. No push is authorized for this phase. Remote CI has not run
-for these changes; previous Phase 2 CI is not evidence of Phase 3 remote success.
+inventory, or permanent deletion. The subsequent authorized push published Phase 3 at
+`e5c99f62d45a00868d5139b4344e30e4d15f29aa`; its remote CI completed successfully.
 
 ## Decisions and ambiguities resolved
 
@@ -249,7 +249,12 @@ interrupted disposable runs may leave ignored test databases for a later scoped 
 The existing CI test discovery covers new database, migration, unit and browser files without
 changing its four jobs. Python matrix jobs without a PostgreSQL URL explicitly skip database tests;
 the PostgreSQL job supplies it. Optional backup smoke needs compatible client tools and reports
-a skip if absent. No Phase 3 push has been made, so remote CI has not run.
+a skip if absent. The authorized Phase 3 push published remote `main` at
+`e5c99f62d45a00868d5139b4344e30e4d15f29aa`.
+[GitHub Actions run 34535210216](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34535210216)
+(`push`) concluded **success**. All four jobs passed: Python 3.11, Python 3.12,
+PostgreSQL and authentication integration, and Frontend and authenticated browser verification.
+This remote result supplements the unchanged local verification evidence above.
 
 No issue assignment/resolution lifecycle, due-date/reminder system, AP manager KPI dashboard,
 member-management admin UI, inventory, permanent purge/retention engine, MFA/SSO, or production
