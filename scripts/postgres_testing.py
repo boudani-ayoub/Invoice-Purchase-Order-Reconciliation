@@ -25,7 +25,7 @@ class Database:
 
 
 @contextmanager
-def provision_database(configured: str, *, revision: str = "head"):
+def provision_database(configured: str, *, revision: str | None = "head"):
     admin_url = database_url(configured)
     suffix = uuid4().hex[:16]
     db_name, owner, runtime, identity = (
@@ -84,8 +84,9 @@ def provision_database(configured: str, *, revision: str = "head"):
         )
         engines.append(identity_engine)
         migration_url = owner_url.render_as_string(hide_password=False)
-        with patch.dict(os.environ, {"DATABASE_URL": migration_url}):
-            command.upgrade(Config(str(Path(__file__).parents[1] / "alembic.ini")), revision)
+        if revision is not None:
+            with patch.dict(os.environ, {"DATABASE_URL": migration_url}):
+                command.upgrade(Config(str(Path(__file__).parents[1] / "alembic.ini")), revision)
         yield Database(data_admin, runtime_engine, migration_url, identity_engine)
     finally:
         for engine in engines:
