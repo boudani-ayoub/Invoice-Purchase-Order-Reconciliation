@@ -1,7 +1,10 @@
 # Reconciliation frontend
 
 The Next.js interface uses cookie-backed authentication and organization-scoped FastAPI analyses.
-Financial files and reports remain in memory; accounts and sessions use PostgreSQL on the backend.
+Raw financial files remain temporary. Browser analyses save validated evidence and report snapshots
+to PostgreSQL. `/history` provides filtered, paginated history; `/history/{id}` shows the original
+report, provenance, and permission-controlled metadata/archive/restore actions. There is no
+stateless fallback or automatic create retry: check History after an uncertain submission.
 
 Create local configuration from `.env.example`, then run:
 

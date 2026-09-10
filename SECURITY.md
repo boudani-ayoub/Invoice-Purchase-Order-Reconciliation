@@ -2,9 +2,10 @@
 
 ## Scope
 
-The project contains the V0.1 local CLI, an optional stateless FastAPI adapter, and a Next.js
+The project contains the V0.1 local CLI, an optional authenticated FastAPI adapter, and a Next.js
 frontend. They use the same deterministic reconciliation package and return terminal, JSON, CSV,
-or browser-rendered reports. None executes input content or persists reconciliation data.
+or browser-rendered reports. None executes input content. Persistent web routes save validated
+source evidence and report snapshots; the CLI and stateless API routes do not.
 
 The process can read and write any path permitted to the operating-system user who runs it. Run
 it with ordinary user privileges and review paths before using `--force`.
@@ -45,13 +46,16 @@ it with ordinary user privileges and review paths before using `--force`.
   parser and schema validation remain authoritative. Structured validation failures return HTTP
   422 without exposing temporary server paths.
 - Unexpected failures return a generic HTTP 500 payload. An ASGI error boundary logs only the
-  exception class, preventing driver details from escaping to Uvicorn traceback logging.
+  exception class and a server-generated request UUID, preventing driver details from escaping
+  to Uvicorn traceback logging. Incoming request IDs are not trusted as audit identifiers.
 - Browser access is denied by default. `RECONCILE_ALLOWED_ORIGINS` accepts a comma-separated list
   of exact HTTP or HTTPS origins. Wildcards/credential-bearing origins are rejected. Credentialed
-  CORS permits GET/POST, Content-Type, and X-CSRF-Token only for the explicit allow-list.
+  CORS permits GET/POST/PATCH, Content-Type, and X-CSRF-Token only for the explicit allow-list.
 - Every analysis endpoint requires a live server-side session, active user/organization/membership,
   centralized RUN_ANALYSIS permission, trusted Origin, and a signed session-bound CSRF proof.
-  PostgreSQL stores identity and session state, not uploaded files or analysis results.
+  A header-only gate rejects unauthorized multipart requests on all nine upload routes before
+  FastAPI consumes/spools their bodies. Authorized multipart still needs proxy resource limits.
+  PostgreSQL stores identity, validated evidence, and saved analysis results, never raw upload bytes.
 - Do not expose the MVP anonymously to the public internet with sensitive financial data. A
   production deployment requires HTTPS, explicit trusted origins, deployment-layer request limits,
   timeouts, logging controls, tested account recovery, and a deployment-specific threat
@@ -63,11 +67,10 @@ it with ordinary user privileges and review paths before using `--force`.
   HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
 - `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` is public build configuration. It defaults to 120 seconds
   and must be a positive integer. Timing out aborts the browser request; it does not terminate work
-  already executing in FastAPI. A retry can overlap with that work, although the current operation
-  is stateless and creates no payment or persistence side effect.
-- Uploaded files and reconciliation responses stay in the current React session. The frontend
-  does not write them to local storage, session storage, IndexedDB, or a database; refreshing or
-  starting a new reconciliation clears the current state.
+  already executing in FastAPI. A lost response may follow a committed run. Check History before
+  retrying; repeated submissions create independent imports, not a deduplicated operation.
+- Uploaded files stay in the current React session. Saved reports are retained server-side and
+  survive refresh/login. The frontend never writes them to localStorage, sessionStorage, or IndexedDB.
 - Browser filename and MIME hints improve usability only. FastAPI and the strict Python loaders
   remain the validation and size-enforcement boundary. The frontend intentionally has no second
   file-size constant that could drift from the API limit.
@@ -86,8 +89,29 @@ it with ordinary user privileges and review paths before using `--force`.
 ## Identity and persistence boundary
 
 The CLI does not import the optional auth/database/web packages. HTTP uses separate limited
-identity and tenant database connections. Uploads/results are not saved by current workflows.
-There are no business CRUD, run-history, member-administration, or workflow routes.
+identity and tenant database connections. Persistent create, history, metadata, archive, and restore
+use only the tenant connection after fresh authorization. Member administration and AP workflow
+remain out of scope.
+
+Source import, completed run, findings, immutable snapshot, and completion audit share one
+transaction. Metadata/archive/restore and their audit event also commit or roll back together.
+Optimistic versions checked under a row lock reject stale writes with `409`. Scope is selected
+from the authenticated session, never a browser-supplied organization or actor. Other-tenant run
+IDs return the same `404` as missing IDs. Reads/mutations recheck current access; UI controls are
+not an authorization boundary. All `/api/` responses use `Cache-Control: no-store`.
+
+The runtime cannot rewrite source evidence, findings, or snapshots. Only title, note, archive
+timestamp, and version can be updated on runs. Audit events have SELECT/INSERT-only runtime grants,
+forced RLS, same-tenant actor/resource foreign keys, bounded non-sensitive metadata, and a trigger
+rejecting UPDATE/DELETE. No business DELETE/TRUNCATE is granted. The identity role has no history
+or audit access. A database owner/superuser can change schema or disable protections; the audit
+trail is not cryptographic non-repudiation or protection from a compromised database administrator.
+
+Archive only removes a run from the default list. Validated financial records, filenames, reports,
+notes, and audit data remain stored, including in backups. There is no purge/retention scheduler,
+legal-hold system, or raw-file download. Keep uploads and dumps out of public repositories.
+Use the [persistence threat model](docs/threat-model-persistence.md) and
+[backup/restore runbook](docs/backup-restore.md) before deploying persistent financial data.
 
 Passwords use Argon2id (64 MiB, three iterations, four lanes), salted by argon2-cffi, with
 rehash-on-login. The policy is 15–128 Unicode code points with spaces allowed, no trimming or
@@ -151,7 +175,7 @@ reporting option under the GitHub **Security** tab when available. Otherwise, co
 repository owner through the GitHub profile to agree on a private reporting channel.
 
 A public deployment still requires operational threat review, network-level resource limits,
-tested backup/restore, retention, and incident response. MFA, SSO, and actor-aware business audits
-remain future work. This policy does not claim production readiness or compliance certification.
+tested operational backup/restore, retention, and incident response. MFA, SSO, and audit-log
+administration remain future work. This policy does not claim production readiness or compliance certification.
 The current reverse-proxy baseline and its remaining requirements are documented in
 [`docs/deployment.md`](docs/deployment.md).

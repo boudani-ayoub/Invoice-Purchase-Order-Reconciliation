@@ -42,14 +42,18 @@ alembic upgrade head
 alembic check
 ```
 
-The migrations install 20 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
+The migrations install 21 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
 snapshot protection, and runtime grants. No manual table/policy setup is needed. Role provisioning
 is deliberately separate from migrations: application migrations should not require CREATEROLE.
 The source distribution contains Alembic assets; the core wheel remains lightweight and DB-free.
 
-Migration `0001` is unchanged; `0002` adds credentials, hashed sessions, email tokens, throttle
+Migrations `0001` and `0002` are unchanged by Phase 3; `0002` adds credentials, hashed sessions, email tokens, throttle
 buckets, and nullable `users.email_verified_at`. Existing Phase 1 users are preserved but are not
-silently given a password or verified status. There is no legacy-account activation UI in Phase 2.
+silently given a password or verified status. There is no legacy-account activation UI.
+`0003` adds bounded run metadata, archive/version fields, keyset indexes, and immutable audit events.
+It narrows runtime writes to inserts plus run metadata updates; source evidence/findings cannot
+be rewritten. Existing accounts, password hashes, sessions, and source/report rows survive upgrade.
+Downgrading `0003` removes its metadata/audit table: use only an approved recovery procedure.
 
 After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identity login in
 `IDENTITY_DATABASE_URL`, never the schema-owner URL. Do not reuse the migration process environment.
@@ -57,7 +61,7 @@ After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identi
 context, commits success and rolls back failure. It does **not** verify membership. Phase 2 checks
 session, active user, active membership, and permission before entering this helper, then rechecks
 membership and organization under tenant RLS. Identity policies apply only to the identity group;
-all 20 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
+all 21 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
 
 ## Integration tests
 
@@ -104,7 +108,12 @@ Build Next with the matching API port.
 Interrupt normally to permit cleanup. A forced process kill can leave uniquely named test
 databases/roles for an administrator to inspect and remove; never reset unrelated databases.
 
-See [the Phase 2 report](product-phase-2-report.md) for current tested versions and counts, and
+The optional restore smoke requires `pg_dump`/`pg_restore` compatible with the server. Put them
+on PATH or set test-only `POSTGRES_BIN` to their directory; the test reports a skip when unavailable.
+It restores synthetic data into a second disposable database and checks snapshot, audit, RLS,
+and identity-role isolation. This is not scheduled production backup coverage.
+
+See [the Phase 3 report](product-phase-3-report.md) for current tested versions and counts, and
 [data-model-v1.md](data-model-v1.md) for ownership, immutable snapshots, duplicate preservation,
-deletion rules, and unresolved references. Persistent imports, saved runs, and CRUD remain future
-work, after authenticated authorization exists.
+deletion rules, and unresolved references. Follow [backup/restore](backup-restore.md) for operational
+credential separation and restoration checks.

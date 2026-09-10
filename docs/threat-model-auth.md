@@ -1,5 +1,9 @@
 # Authentication threat model
 
+This is the Phase 2 assessment. The [Phase 3 persistence threat model](threat-model-persistence.md)
+adds saved-data/resource threats and documents the pre-body upload gate, expanded permissions,
+and actor-aware audit. Historical Phase 2 exclusions below are not the current feature list.
+
 Scope: Product Phase 2, first-party email/password accounts, organization memberships, opaque
 sessions, four stateless analyses and the legacy analysis route. No payment execution or saved
 business workflow exists. This is a design review with regression evidence, not certification.

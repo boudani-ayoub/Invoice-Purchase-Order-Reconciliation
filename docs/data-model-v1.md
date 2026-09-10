@@ -1,7 +1,42 @@
 # Data model v1
 
-Product Phase 1 introduces optional PostgreSQL storage infrastructure. The CLI and every HTTP
-analysis remain stateless. No company CRUD, identity, session, history, or inventory API is exposed.
+This document records the Phase 1 schema decisions; the original baseline sections below are
+historical. Phase 2 added identity; Phase 3 activates persistent runs and the additive migration
+described next. CLI and explicit stateless APIs remain database-free for business results.
+
+## Product Phase 3 extension
+
+`0003` leaves `0001`/`0002` intact. `analysis_runs` gains nullable `title` (120 characters),
+`note` (4000), `archived_at`, and positive integer `version` (default 1). Archive cannot predate
+creation. History has organization/archive/creation/id and organization/mode/archive/creation/id
+indexes. Queries sort `created_at DESC, id DESC` with a bounded keyset cursor.
+
+The 21st table, `audit_events`, carries organization, actor, event/resource type, run resource UUID,
+server request UUID, timestamps, and at most 2048 bytes of JSON-object metadata. Composite FKs
+bind the actor's membership and run to the same organization. Events are completion, metadata
+update, archive, and restore. Runtime SELECT/INSERT only, forced RLS, and a row mutation trigger
+protect the trail. No audit UI or system-actor event type is introduced.
+
+One create transaction stores each source import, validated headers/lines, a completed run and
+its real authenticated creator, analysis-source links, findings, snapshot, and completion event.
+Hashes/byte counts describe original streamed bytes; sanitized basenames are display metadata,
+never server paths. Physical CSV end-line positions preserve each occurrence, including multiline
+records. Re-imports intentionally produce independent imports; hashes are not uniqueness keys.
+Active same-organization master codes resolve when present; missing masters are not invented.
+PO links resolve only against the source PO import in this run. Unknown references and duplicate
+invoices remain evidence, not persistence failures. Storage range/encoding failures return `422`
+and roll back rather than round, truncate, or silently omit values.
+
+The snapshot, not findings, remains the authoritative mode-specific report. Partial/unreceived
+PO states are not promoted to invoice exceptions. History never recomputes totals or calls the
+engine. Snapshots retain report schema version 1 and the installed engine package version.
+Source evidence, source links, and findings now deny runtime UPDATE. Run UPDATE is column-limited
+to metadata/archive/version. The prior snapshot trigger and business DELETE restrictions remain.
+
+Archive/restore keeps all evidence and changes metadata plus audit atomically. A row lock and
+expected-version comparison reject stale mutations. Archive is reversible hiding, not deletion;
+there is no purge API or retention scheduler. See [the Phase 3 report](product-phase-3-report.md)
+and [retention/backup boundary](backup-restore.md).
 
 ## Decisions before implementation
 

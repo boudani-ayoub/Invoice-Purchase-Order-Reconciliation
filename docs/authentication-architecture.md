@@ -1,5 +1,9 @@
 # Authentication architecture
 
+This records Phase 2. Phase 3 reuses these identity/session boundaries for saved runs, adds
+resource permissions, and rejects unauthorized uploads before body consumption. See
+[persistent architecture](product-phase-3-report.md) for the current business-data path.
+
 Product Phase 2 wraps the existing analysis services with authentication; it does not change their
 calculations or persist financial uploads. The CLI remains independent of all optional packages.
 

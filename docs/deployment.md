@@ -3,10 +3,12 @@
 ## Readiness boundary
 
 The product now has first-party authentication, server-side sessions, tenant authorization, CSRF,
-and PostgreSQL-backed identifier throttles. Analysis files/results remain request-scoped. This is
+and PostgreSQL-backed identifier throttles. Raw analysis files remain request-scoped; validated
+records, reports, metadata, and audit evidence are retained in PostgreSQL. This is
 not approval for a public financial service: network resource limits, operational recovery,
-deployment-specific threat review, and monitoring are still required. Business history and
-actor-aware audit events are not implemented. See [the auth threat model](threat-model-auth.md).
+deployment-specific threat review, and monitoring are still required. See the
+[auth threat model](threat-model-auth.md), [persistence threat model](threat-model-persistence.md),
+and [backup/restore runbook](backup-restore.md).
 
 The preferred topology uses one public HTTPS origin:
 
@@ -75,13 +77,16 @@ server {
 
 The 32 MiB proxy ceiling covers three files at the 10 MiB application limit plus multipart
 overhead. It is a total request limit, while FastAPI enforces 10 MiB on each file. Keep both layers:
-the multipart server or proxy can receive or spool bytes before the endpoint rejects one file.
+the multipart server or proxy can receive or spool authorized bytes before the endpoint rejects
+one file. Application middleware rejects unauthorized upload requests before body consumption;
+it cannot prevent a proxy from buffering bytes before forwarding the request.
 Protect proxy and operating-system temporary storage with restrictive permissions, bounded space,
 short retention, and encrypted disks where sensitive files are permitted.
 
 The 130-second API proxy timeout is slightly longer than the default 120-second browser wait. A
 browser abort does not cancel server-side reconciliation, and the current API exposes no cancellation
-protocol. Do not label the timeout as cancellation. Tune all three layers together after measuring
+protocol. A create may commit despite a browser timeout. Check History before resubmitting; there
+is no idempotent retry contract. Do not label the timeout as cancellation. Tune all three layers together after measuring
 representative files rather than simply increasing them without a resource budget.
 
 ## Processes and forwarded headers

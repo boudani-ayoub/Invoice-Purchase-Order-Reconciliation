@@ -5,10 +5,10 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 2 adds registration, verified email identity, secure server-side sessions,
-and organization-scoped authorization to all four analysis workflows. The CLI remains account-free
-and database-free. Financial uploads and results are still temporary: history, business CRUD,
-admin screens, and inventory balances are not implemented.
+**Status:** Product Phase 3 saves organization-scoped analysis runs, validated source evidence,
+immutable reports, and actor-aware audit events. History supports title/note edits and reversible
+archive with stale-write protection. Raw uploads remain temporary. The CLI remains account-free
+and database-free. AP assignment/resolution, dashboards, admin screens, and inventory are not implemented.
 
 ## Choose a workflow
 
@@ -21,9 +21,10 @@ Open `/reconcile` to select a workflow, or bookmark its dedicated page.
 | PO ↔ Receipt: receiving / fulfillment analysis | Purchase orders, goods receipts | Fully/partially/not/over-received lines, outstanding delivery, unresolved receipts | Invoice/payment exposure, inventory balances |
 | Three-way: invoice ↔ PO ↔ receipt | All three files | Existing invoice controls against both order terms and received capacity | Taxes, returns, credit notes, as-of-date controls |
 
-Each workflow uses `/api/v1/analyses/<mode>` and `/reconcile/<mode>`, where mode is `invoice-po`,
+Each browser workflow uses `/api/v1/runs/<mode>` and `/reconcile/<mode>`, where mode is `invoice-po`,
 `invoice-receipt`, `po-receipt`, or `three-way`. Each API endpoint declares exactly its required
 multipart fields. `/api/v1/reconcile` and the original `/` page remain available for three-way use.
+The protected `/api/v1/analyses/<mode>` routes remain available for stateless API clients.
 New reports include a `mode` discriminator; receiving reports have their own types and separate
 `orphan_receipts`, rather than meaningless invoice fields.
 
@@ -246,12 +247,44 @@ curl -X POST \
 Each upload has a 10 MiB application limit. Files are streamed into fixed names inside a unique
 request directory, reconciled, and removed before the response completes. Client filenames,
 extensions, and MIME types are not trusted; the existing strict CSV loaders remain authoritative.
-The service stores no uploads or results.
+Persistent routes retain validated records, safe filename metadata, byte counts, SHA-256 hashes,
+findings, and the exact report snapshot. Stateless routes retain none of that business data.
 
 Invalid CSV returns `422`, oversized files return `413`, missing/expired sessions return `401`,
 and failed membership/CSRF checks return `403`. Explicitly trusted origins receive credentialed
-CORS for GET/POST and the CSRF header; wildcard origins are rejected. Sensitive responses use
+CORS for GET/POST/PATCH and the CSRF header; wildcard origins are rejected. Sensitive responses use
 `Cache-Control: no-store`. Authentication does not by itself approve public production deployment.
+
+## Saved runs and history
+
+| Endpoint | Contract |
+| --- | --- |
+| `POST /api/v1/runs/invoice-po` | `purchase_orders`, `invoices` multipart files |
+| `POST /api/v1/runs/invoice-receipt` | `receipts`, `invoices` multipart files |
+| `POST /api/v1/runs/po-receipt` | `purchase_orders`, `receipts` multipart files |
+| `POST /api/v1/runs/three-way` | All three multipart files |
+| `GET /api/v1/runs` | Bounded keyset history; `mode`, `archived`, `limit`, `cursor` |
+| `GET /api/v1/runs/{id}` | Run metadata, stored report, provenance, engine/schema versions |
+| `PATCH /api/v1/runs/{id}` | `expected_version` plus `title` and/or `note` only |
+| `POST /api/v1/runs/{id}/archive` | `expected_version`; hide from active history |
+| `POST /api/v1/runs/{id}/restore` | `expected_version`; return to active history |
+
+Create returns `201` with `{ "run": { ... }, "report": { ... } }` only after the source records,
+run, findings, snapshot, and audit event commit together. History reads never rerun reconciliation.
+An invalid source or failed write leaves no partial saved run. Storage range/encoding failures
+return a safe `422` instead of truncating source values. Cross-organization IDs return `404`.
+
+Members can create/view runs; AP managers and organization admins can also edit/archive/restore.
+Titles are at most 120 characters, notes 4000; both are optional plain text. Every successful
+mutation increments `version` and records its actor. Stale versions return `409`, with a refresh
+action rather than overwriting another editor. Archive is not erasure; there is no purge API.
+
+Open `/history` for active/archived filters and pagination, then `/history/{id}` for saved results.
+A timeout or lost response can occur after a commit: check History before resubmitting. There is
+no automatic create retry, idempotency key, background worker, or fallback to a stateless request.
+See the [Phase 3 report](docs/product-phase-3-report.md),
+[persistence threat model](docs/threat-model-persistence.md), and
+[backup/restore runbook](docs/backup-restore.md).
 
 ## Frontend
 
@@ -285,7 +318,7 @@ Open `http://127.0.0.1:3000/register`, then sign in. Disabled local mail means r
 are not delivered; configure SMTP to exercise delivery, including verification. Production
 rejects the verification bypass. Passwords accept 15–128 characters, spaces and Unicode, without
 composition rules. `/login`, `/forgot-password`, `/reset-password`, and `/verify-email` provide
-the account flows. The authenticated shell shows the user, organization, reconciliation, and
+the account flows. The authenticated shell shows the user, organization, reconciliation, history, and
 sign out; multiple active memberships require a selection.
 
 `NEXT_PUBLIC_API_BASE_URL` is the browser-visible FastAPI origin and
@@ -399,7 +432,7 @@ and axe-core. No `PYTHONPATH` shortcut is used. Set `TEST_DATABASE_ADMIN_URL` be
 browser checks; it must identify an explicitly disposable local/CI PostgreSQL service.
 Dependabot checks dependencies and official GitHub Actions weekly.
 
-A separate PostgreSQL 17 job installs `.[dev,web,db,auth]`, tests clean and Phase 1 upgrades,
+A separate PostgreSQL 17 job installs `.[dev,web,db,auth]`, tests clean, Phase 1 and Phase 2 upgrades,
 and tests auth, constraints, and RLS with distinct non-owner identity/runtime logins. Configure
 `TEST_DATABASE_ADMIN_URL` and run `python -m pytest tests/database -vv` to reproduce it locally.
 The existing core wheel smoke still installs no optional dependencies.
@@ -415,7 +448,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Known limits
 
-- No MFA, SSO, member-management UI, persistent imports, or saved run history.
+- No MFA, SSO, member-management UI, AP assignment/resolution, dashboard, or inventory.
+- Archive is not deletion; no permanent-purge or retention engine is implemented.
 - Production SMTP must be configured and verified; no durable mail queue or auth-state purge job.
 - The API is a local/development MVP, not a public production financial service.
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
@@ -428,8 +462,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next product phase
 
-Product Phase 3 — persistent reconciliation runs, provenance, meaningful CRUD, history, and
-actor-aware audit events. This is the next step, not part of Phase 2. The complete sequence through
+Product Phase 4 — AP exception workflow, assignment, resolution lifecycle, due dates, comments,
+and reminders. This is the next step, not implemented here. The complete sequence through
 authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
 
 ## Project history
@@ -441,7 +475,8 @@ The implementation decisions and verification evidence are preserved in
 [`Web Phase 2`](docs/web-phase-2-report.md), then the
 [`Web Phase 3`](docs/web-phase-3-report.md) hardening report and
 [`Product Phase 1`](docs/product-phase-1-report.md) and
-[`Product Phase 2`](docs/product-phase-2-report.md).
+[`Product Phase 2`](docs/product-phase-2-report.md), and
+[`Product Phase 3`](docs/product-phase-3-report.md).
 
 ## License
 
