@@ -30,7 +30,11 @@ class SafeErrorsMiddleware:
         try:
             await self.app(scope, receive, track_send)
         except Exception as error:
-            _LOGGER.error("Unhandled reconciliation API error (%s)", type(error).__name__)
+            _LOGGER.error(
+                "Unhandled reconciliation API error (%s), request_id=%s",
+                type(error).__name__,
+                scope.get("state", {}).get("request_id"),
+            )
             if not started:
                 await JSONResponse(
                     status_code=500,

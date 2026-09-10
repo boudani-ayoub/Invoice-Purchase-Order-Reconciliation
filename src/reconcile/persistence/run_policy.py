@@ -1,0 +1,9 @@
+"""Bounds shared by persistence, input validation, and history queries."""
+
+TITLE_LIMIT = 120
+NOTE_LIMIT = 4000
+FILENAME_LIMIT = 255
+HISTORY_PAGE_SIZE = 25
+HISTORY_PAGE_MAX = 100
+SNAPSHOT_SCHEMA_VERSION = 1
+AUDIT_METADATA_LIMIT = 2048

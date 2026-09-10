@@ -61,6 +61,7 @@ def verify_database_role(engine: Engine, *, identity: bool) -> None:
                 "invoice_lines",
                 "analysis_runs",
                 "analysis_sources",
+                "audit_events",
             )
             if identity
             else ("users", "user_credentials", "auth_sessions", "email_tokens", "auth_throttles")

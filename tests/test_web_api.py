@@ -107,7 +107,7 @@ def test_configured_frontend_origin_receives_narrow_cors_headers() -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == origin
-    assert response.headers["access-control-allow-methods"] == "GET, POST"
+    assert response.headers["access-control-allow-methods"] == "GET, POST, PATCH"
     allowed_headers = response.headers["access-control-allow-headers"].lower().split(", ")
     assert "content-type" in allowed_headers
     assert response.headers["access-control-allow-credentials"] == "true"

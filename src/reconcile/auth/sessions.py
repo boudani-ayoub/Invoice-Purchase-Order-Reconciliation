@@ -1,6 +1,7 @@
 """Opaque sessions and fresh organization authorization."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -123,8 +124,20 @@ class Sessions:
             )
 
     def authorize_analysis(self, raw: str | None) -> Principal:
+        return self.authorize(raw, Permission.RUN_ANALYSIS)
+
+    def authorize(self, raw: str | None, permission: Permission) -> Principal:
+        with self.authorized_transaction(raw, permission) as (principal, _):
+            return principal
+
+    @contextmanager
+    def authorized_transaction(
+        self,
+        raw: str | None,
+        permission: Permission,
+    ) -> Iterator[tuple[Principal, Session]]:
         principal = self.authenticate(raw)
-        membership = principal.require(Permission.RUN_ANALYSIS)
+        membership = principal.require(permission)
         with tenant_session(self.tenant, membership.organization_id) as session:
             current = session.scalar(
                 select(OrganizationMembership).where(
@@ -138,10 +151,10 @@ class Sessions:
                 current is None
                 or organization is None
                 or organization.status != RecordStatus.ACTIVE
-                or Permission.RUN_ANALYSIS not in ROLE_PERMISSIONS.get(current.role, frozenset())
+                or permission not in ROLE_PERMISSIONS.get(current.role, frozenset())
             ):
                 raise AuthError(403, "forbidden", "An active organization membership is required.")
-        return principal
+            yield principal, session
 
     def select_organization(self, raw: str | None, organization_id: UUID) -> IssuedSession:
         principal = self.authenticate(raw)

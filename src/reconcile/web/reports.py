@@ -20,7 +20,14 @@ from reconcile.analysis.models import (
     OrphanReceipt,
     PoReceiptResult,
 )
-from reconcile.models import CurrencyAmount, IssueCode, ReconciliationResult
+from reconcile.models import (
+    CurrencyAmount,
+    GoodsReceiptLine,
+    InvoiceLine,
+    IssueCode,
+    PurchaseOrderLine,
+    ReconciliationResult,
+)
 
 
 class InvoiceSummary(BaseModel):
@@ -95,30 +102,41 @@ def _summary_mapping(summary: object) -> dict[str, object]:
 
 
 def render_analysis(mode: AnalysisMode, paths: Mapping[str, Path]) -> str:
+    return render_records(mode, load_analysis_sources(paths))
+
+
+def load_analysis_sources(
+    paths: Mapping[str, Path],
+) -> dict[str, tuple[PurchaseOrderLine | GoodsReceiptLine | InvoiceLine, ...]]:
+    loaders = {
+        "purchase_orders": load_purchase_orders,
+        "receipts": load_goods_receipts,
+        "invoices": load_invoices,
+    }
+    return {field: loaders[field](path) for field, path in paths.items()}
+
+
+def render_records(mode: AnalysisMode, sources: Mapping[str, tuple]) -> str:
     match mode:
         case AnalysisMode.INVOICE_PO:
-            rows, summary = analyze_invoice_po(
-                load_purchase_orders(paths["purchase_orders"]), load_invoices(paths["invoices"])
-            )
+            rows, summary = analyze_invoice_po(sources["purchase_orders"], sources["invoices"])
             report = InvoicePoReport(results=rows, summary=_summary_mapping(summary))
         case AnalysisMode.INVOICE_RECEIPT:
-            rows, summary = analyze_invoice_receipt(
-                load_goods_receipts(paths["receipts"]), load_invoices(paths["invoices"])
-            )
+            rows, summary = analyze_invoice_receipt(sources["receipts"], sources["invoices"])
             report = InvoiceReceiptReport(results=rows, summary=_summary_mapping(summary))
         case AnalysisMode.PO_RECEIPT:
             rows, orphans, summary = analyze_po_receipt(
-                load_purchase_orders(paths["purchase_orders"]),
-                load_goods_receipts(paths["receipts"]),
+                sources["purchase_orders"],
+                sources["receipts"],
             )
             report = PoReceiptReport(
                 results=rows, orphan_receipts=orphans, summary=_summary_mapping(summary)
             )
         case AnalysisMode.THREE_WAY:
             rows, summary = reconcile(
-                load_purchase_orders(paths["purchase_orders"]),
-                load_goods_receipts(paths["receipts"]),
-                load_invoices(paths["invoices"]),
+                sources["purchase_orders"],
+                sources["receipts"],
+                sources["invoices"],
             )
             report = ThreeWayReport(results=rows, summary=_summary_mapping(summary))
         case _:

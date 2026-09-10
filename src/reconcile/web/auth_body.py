@@ -4,6 +4,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from reconcile.auth.config import AUTH_PATH
+from reconcile.web.paths import MULTIPART_PATHS, RUNS_PATH
 
 AUTH_BODY_LIMIT = 16 * 1024
 
@@ -15,8 +16,9 @@ class AuthBodyLimitMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if (
             scope["type"] != "http"
-            or scope["method"] != "POST"
-            or not scope["path"].startswith(f"{AUTH_PATH}/")
+            or scope["method"] not in {"POST", "PATCH"}
+            or not scope["path"].startswith((f"{AUTH_PATH}/", f"{RUNS_PATH}/"))
+            or scope["path"].rstrip("/") in MULTIPART_PATHS
         ):
             await self.app(scope, receive, send)
             return
@@ -31,7 +33,7 @@ class AuthBodyLimitMiddleware:
                     status_code=413,
                     content={
                         "error": "request_too_large",
-                        "message": "Authentication request is too large.",
+                        "message": "Request is too large.",
                     },
                     headers={"Cache-Control": "no-store"},
                 )

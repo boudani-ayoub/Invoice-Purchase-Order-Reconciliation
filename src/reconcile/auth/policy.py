@@ -9,9 +9,16 @@ from reconcile.persistence.models import MembershipRole
 
 class Permission(StrEnum):
     RUN_ANALYSIS = "RUN_ANALYSIS"
+    VIEW_RUN_HISTORY = "VIEW_RUN_HISTORY"
+    UPDATE_RUN_METADATA = "UPDATE_RUN_METADATA"
+    ARCHIVE_RUN = "ARCHIVE_RUN"
 
 
-ROLE_PERMISSIONS = {role: frozenset({Permission.RUN_ANALYSIS}) for role in MembershipRole}
+ROLE_PERMISSIONS = {
+    MembershipRole.MEMBER: frozenset({Permission.RUN_ANALYSIS, Permission.VIEW_RUN_HISTORY}),
+    MembershipRole.AP_MANAGER: frozenset(Permission),
+    MembershipRole.ORG_ADMIN: frozenset(Permission),
+}
 
 
 @dataclass(frozen=True)

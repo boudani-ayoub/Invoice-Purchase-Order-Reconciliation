@@ -1,9 +1,10 @@
-"""FastAPI adapter for stateless reconciliation requests."""
+"""Authenticated FastAPI adapter for transient analyses and saved runs."""
 
 import os
 from collections.abc import Callable, Sequence
 from contextlib import asynccontextmanager
 from functools import partial
+from hashlib import sha256
 from importlib.metadata import version
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -31,6 +32,8 @@ from reconcile.auth.service_errors import AuthError
 from reconcile.web.auth import require_analysis
 from reconcile.web.auth import router as auth_router
 from reconcile.web.auth_body import AuthBodyLimitMiddleware
+from reconcile.web.paths import ANALYSES_PATH
+from reconcile.web.provenance import UploadedSource, safe_filename
 from reconcile.web.reports import (
     InvoicePoReport,
     InvoiceReceiptReport,
@@ -38,9 +41,8 @@ from reconcile.web.reports import (
     ThreeWayReport,
     render_analysis,
 )
+from reconcile.web.request_security import AnalysisGateMiddleware, RequestIdMiddleware
 from reconcile.web.safe_errors import SafeErrorsMiddleware
-
-ANALYSES_PATH = "/api/v1/analyses"
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 64 * 1024
@@ -92,24 +94,31 @@ def create_app(
     application = FastAPI(
         title="Invoice / Purchase Order Reconciliation API",
         version=version(_DISTRIBUTION_NAME),
-        description="Authenticated organization-scoped access to stateless procurement analysis.",
+        description="Authenticated organization-scoped procurement analyses and saved history.",
         lifespan=lifespan,
         docs_url="/docs" if docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if docs_enabled else None,
     )
     application.state.auth = auth
+    application.state.max_upload_bytes = max_upload_bytes
     application.add_middleware(AuthBodyLimitMiddleware)
+    application.add_middleware(AnalysisGateMiddleware)
     application.add_middleware(SafeErrorsMiddleware)
+    application.add_middleware(RequestIdMiddleware)
     application.include_router(auth_router)
+    from reconcile.web.runs import router as runs_router
+
+    application.include_router(runs_router)
     configured_origins = _resolve_allowed_origins(allowed_origins)
     if configured_origins:
         application.add_middleware(
             CORSMiddleware,
             allow_origins=list(configured_origins),
             allow_credentials=True,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "PATCH"],
             allow_headers=["Content-Type", CSRF_HEADER],
+            expose_headers=["X-Request-ID"],
         )
 
     @application.middleware("http")
@@ -257,14 +266,16 @@ async def _process_uploads(
     renderer: Callable[[dict[str, Path]], str],
     *,
     max_upload_bytes: int,
+    persist: Callable[[dict[str, Path], dict[str, UploadedSource]], str] | None = None,
 ) -> Response:
     try:
         with _request_directory() as directory:
             paths: dict[str, Path] = {}
+            metadata: dict[str, UploadedSource] = {}
             try:
                 for field, upload in uploads.items():
                     path = Path(directory) / _INTERNAL_FILENAMES[field]
-                    await _write_upload(
+                    metadata[field] = await _write_upload(
                         upload,
                         path,
                         field=field,
@@ -282,14 +293,20 @@ async def _process_uploads(
                 )
 
             try:
-                report = await run_in_threadpool(renderer, paths)
+                report = (
+                    await run_in_threadpool(persist, paths, metadata)
+                    if persist
+                    else await run_in_threadpool(renderer, paths)
+                )
             except CsvValidationError as error:
                 return JSONResponse(
                     status_code=422,
                     content=_validation_error_response(error),
                 )
 
-            return Response(content=report, media_type="application/json")
+            return Response(
+                content=report, media_type="application/json", status_code=201 if persist else 200
+            )
     finally:
         for upload in uploads.values():
             await upload.close()
@@ -332,14 +349,17 @@ async def _write_upload(
     *,
     field: str,
     max_bytes: int,
-) -> None:
+) -> UploadedSource:
     size = 0
+    digest = sha256()
     with destination.open("xb") as destination_file:
         while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
             size += len(chunk)
             if size > max_bytes:
                 raise _FileTooLargeError(field, max_bytes)
             destination_file.write(chunk)
+            digest.update(chunk)
+    return UploadedSource(safe_filename(upload.filename), size, digest.hexdigest())
 
 
 def _render_reconciliation(

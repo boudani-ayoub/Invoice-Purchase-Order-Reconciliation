@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     Numeric,
     Text,
     UniqueConstraint,
@@ -23,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from reconcile.analysis.models import AnalysisMode, SourceType
 from reconcile.models import IssueCode
 from reconcile.persistence.base import Base, Record, TenantRecord, tenant_constraints, tenant_fk
+from reconcile.persistence.run_policy import NOTE_LIMIT, TITLE_LIMIT
 
 
 class RecordStatus(StrEnum):
@@ -309,6 +311,19 @@ class AnalysisRun(TenantRecord, Base):
         CheckConstraint(
             "status <> 'COMPLETED' OR completed_at IS NOT NULL", name="completed_timestamp"
         ),
+        CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint(f"title IS NULL OR length(title) <= {TITLE_LIMIT}", name="title_length"),
+        CheckConstraint(f"note IS NULL OR length(note) <= {NOTE_LIMIT}", name="note_length"),
+        CheckConstraint("archived_at IS NULL OR archived_at >= created_at", name="archive_time"),
+        Index("ix_analysis_runs_history", "organization_id", "archived_at", "created_at", "id"),
+        Index(
+            "ix_analysis_runs_mode_history",
+            "organization_id",
+            "analysis_mode",
+            "archived_at",
+            "created_at",
+            "id",
+        ),
     )
     analysis_mode: Mapped[AnalysisMode] = mapped_column(enum_type(AnalysisMode))
     status: Mapped[RunStatus] = mapped_column(
@@ -317,6 +332,10 @@ class AnalysisRun(TenantRecord, Base):
     created_by_user_id: Mapped[UUID | None]
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    title: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
 
 
 class AnalysisSource(TenantRecord, Base):
