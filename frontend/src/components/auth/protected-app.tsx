@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ANALYSIS_HUB_PATH } from "@/constants/analysis-modes";
 import { AUTH_ROUTES } from "@/constants/auth";
+import { HISTORY_PATH } from "@/constants/runs";
 
 export function ProtectedApp({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
@@ -72,6 +73,12 @@ export function ProtectedApp({ children }: { children: React.ReactNode }) {
             className="font-semibold text-primary underline-offset-4 hover:underline"
           >
             Reconcile
+          </Link>
+          <Link
+            href={HISTORY_PATH}
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            History
           </Link>
           <div className="flex min-w-0 flex-wrap items-center gap-4">
             {session.memberships.length > 1 ? (

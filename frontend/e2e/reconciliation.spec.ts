@@ -1,6 +1,7 @@
 import { expect, test } from "./auth-fixture";
 
 import { E2E_API_ORIGIN } from "./environment";
+import { createRunPath } from "../src/constants/runs";
 import {
   createInvalidPurchaseOrders,
   createLargeAllowedPurchaseOrders,
@@ -10,7 +11,7 @@ import {
   selectSourceFiles,
 } from "./helpers";
 
-const RECONCILIATION_URL = `${E2E_API_ORIGIN}/api/v1/reconcile`;
+const RECONCILIATION_URL = `${E2E_API_ORIGIN}${createRunPath("three-way")}`;
 
 test("reconciles the sample exports and supports inspection and reset", async ({
   page,

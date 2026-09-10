@@ -54,39 +54,48 @@ export function ReconciliationError({
   }
 
   const content =
-    error.kind === "authorization"
+    error.kind === "storage_capacity"
       ? {
           icon: AlertTriangle,
-          title: "Your access could not be verified",
+          title: "These source values cannot be saved",
           message:
-            "Check your session and organization, then try again. If access was revoked, contact your administrator.",
+            "A value exceeds the database's supported range or encoding. No run was saved. Review the source values before resubmitting.",
         }
-      : error.kind === "network"
+      : error.kind === "authorization"
         ? {
-            icon: Unplug,
-            title: "The reconciliation service could not be reached",
-            message: "Check that the backend is running and try again.",
+            icon: AlertTriangle,
+            title: "Your access could not be verified",
+            message:
+              "Check your session and organization, then try again. If access was revoked, contact your administrator.",
           }
-        : error.kind === "timeout"
+        : error.kind === "network"
           ? {
               icon: Unplug,
-              title: "The reconciliation request timed out",
+              title: "The reconciliation service could not be reached",
               message:
-                "The service may still be processing the files. Wait a moment, then try again.",
+                "Check your connection and History before retrying. A lost response may still have saved a run.",
             }
-          : error.kind === "server"
+          : error.kind === "timeout"
             ? {
-                icon: ServerCrash,
-                title:
-                  "Something went wrong while processing the reconciliation",
+                icon: Unplug,
+                title: "The reconciliation request timed out",
                 message:
-                  "The service returned an internal error. Please try again.",
+                  "The service may still finish saving this run. Check History before retrying; another submission creates a separate run.",
               }
-            : {
-                icon: AlertTriangle,
-                title: "The service returned an unexpected response",
-                message: "Check the frontend API configuration and try again.",
-              };
+            : error.kind === "server"
+              ? {
+                  icon: ServerCrash,
+                  title:
+                    "Something went wrong while processing the reconciliation",
+                  message:
+                    "The service did not confirm a saved result. Check History before retrying.",
+                }
+              : {
+                  icon: AlertTriangle,
+                  title: "The service returned an unexpected response",
+                  message:
+                    "The saved result could not be confirmed. Check History and the API configuration before retrying.",
+                };
   const Icon = content.icon;
 
   return (

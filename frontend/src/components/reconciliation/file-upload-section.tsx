@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle, LockKeyhole } from "lucide-react";
+import { RETENTION_COPY } from "@/constants/runs";
 
 import { Button } from "@/components/ui/button";
 import { FileInputCard } from "@/components/reconciliation/file-input-card";
@@ -72,8 +73,7 @@ export function FileUploadSection({
             className="mt-0.5 size-4 shrink-0 text-primary"
           />
           <p>
-            Files are processed for this request and are not stored by the
-            current service.
+            {RETENTION_COPY}
           </p>
         </div>
         <Button

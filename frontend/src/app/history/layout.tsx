@@ -1,7 +1,6 @@
 import { ProtectedApp } from "@/components/auth/protected-app";
-import { RETENTION_COPY } from "@/constants/runs";
 
-export default function AnalysisLayout({
+export default function HistoryLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -11,9 +10,6 @@ export default function AnalysisLayout({
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </main>
-      <footer className="border-t px-4 py-4 text-center text-xs text-muted-foreground">
-        {RETENTION_COPY}
-      </footer>
     </ProtectedApp>
   );
 }

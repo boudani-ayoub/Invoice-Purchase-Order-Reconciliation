@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
+import { runPath } from "@/constants/runs";
 import { RotateCcw } from "lucide-react";
 
 import { FileUploadSection } from "@/components/reconciliation/file-upload-section";
@@ -18,6 +20,7 @@ export function ReconciliationWorkspace({ mode }: { mode?: AnalysisMode }) {
   const {
     files,
     report,
+    savedRunId,
     error,
     isSubmitting,
     canSubmit,
@@ -109,6 +112,17 @@ export function ReconciliationWorkspace({ mode }: { mode?: AnalysisMode }) {
           </div>
 
           <AnalysisResults report={report} />
+          {savedRunId && (
+            <p role="status" className="text-sm">
+              Saved to history.{" "}
+              <Link
+                className="font-medium text-primary underline"
+                href={runPath(savedRunId)}
+              >
+                View saved run
+              </Link>
+            </p>
+          )}
         </section>
       ) : null}
     </div>

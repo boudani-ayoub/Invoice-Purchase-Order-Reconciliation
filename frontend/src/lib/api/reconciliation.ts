@@ -105,6 +105,13 @@ export async function requestFiles(
         .filter((field): field is string => typeof field === "string"),
     });
   }
+  if (
+    response.status === 422 &&
+    isObject(payload) &&
+    payload.error === "storage_capacity"
+  ) {
+    throw new ReconciliationRequestError({ kind: "storage_capacity" });
+  }
   if (response.status >= 500) {
     throw new ReconciliationRequestError({ kind: "server" });
   }

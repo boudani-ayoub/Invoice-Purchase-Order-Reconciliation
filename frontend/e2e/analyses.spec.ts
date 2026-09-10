@@ -3,9 +3,9 @@ import { expect, test } from "./auth-fixture";
 import {
   ANALYSIS_MODES,
   ANALYSIS_HUB_PATH,
-  analysisApiPath,
   analysisPath,
 } from "../src/constants/analysis-modes";
+import { createRunPath } from "../src/constants/runs";
 import { UPLOAD_SOURCES } from "../src/constants/uploads";
 import { E2E_API_ORIGIN } from "./environment";
 import { createUnicodeSources } from "./helpers";
@@ -44,12 +44,12 @@ for (const definition of Object.values(ANALYSIS_MODES)) {
       }
     }
     const responsePromise = page.waitForResponse(
-      `${E2E_API_ORIGIN}${analysisApiPath(definition.id)}`,
+      `${E2E_API_ORIGIN}${createRunPath(definition.id)}`,
     );
     await submit.click();
     const response = await responsePromise;
-    expect(response.status()).toBe(200);
-    const report = await response.json();
+    expect(response.status()).toBe(201);
+    const { report } = await response.json();
     expect(report.mode).toBe(definition.id);
     expect(report.results).toHaveLength(1);
     const heading = page.getByRole("heading", { name: definition.resultTitle });

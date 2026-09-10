@@ -5,12 +5,13 @@ import { AnalysisHub } from "./analysis-hub";
 import { ReconciliationWorkspace } from "./reconciliation-workspace";
 import { ANALYSIS_MODES, analysisPath } from "@/constants/analysis-modes";
 import { UPLOAD_SOURCES } from "@/constants/uploads";
-import { analyzeFiles } from "@/lib/api/analyses";
+import { createRun } from "@/lib/api/runs";
+import { savedRun } from "@/test/fixtures/runs";
 import { ReconciliationRequestError } from "@/lib/api/reconciliation";
 import { ANALYSIS_REPORTS } from "@/test/fixtures/analyses";
 
-vi.mock("@/lib/api/analyses", () => ({ analyzeFiles: vi.fn() }));
-const mockedAnalyze = vi.mocked(analyzeFiles);
+vi.mock("@/lib/api/runs", () => ({ createRun: vi.fn() }));
+const mockedAnalyze = vi.mocked(createRun);
 beforeEach(() => mockedAnalyze.mockReset());
 
 it("links the four hub choices to bookmarkable routes", () => {
@@ -26,7 +27,7 @@ it("links the four hub choices to bookmarkable routes", () => {
 for (const report of ANALYSIS_REPORTS) {
   const definition = ANALYSIS_MODES[report.mode];
   it(`${report.mode} requires only its sources, presents its results, and resets`, async () => {
-    mockedAnalyze.mockResolvedValue(report);
+    mockedAnalyze.mockResolvedValue(savedRun(report));
     const user = userEvent.setup();
     render(<ReconciliationWorkspace mode={report.mode} />);
     expect(screen.getByText(definition.limitations)).toBeVisible();
@@ -83,7 +84,7 @@ it("keeps two-file errors readable and permits retry", async () => {
   mockedAnalyze.mockRejectedValueOnce(
     new ReconciliationRequestError({ kind: "network" }),
   );
-  mockedAnalyze.mockResolvedValueOnce(ANALYSIS_REPORTS[0]);
+  mockedAnalyze.mockResolvedValueOnce(savedRun(ANALYSIS_REPORTS[0]));
   const user = userEvent.setup();
   render(<ReconciliationWorkspace mode="invoice-po" />);
   for (const label of ["Choose purchase orders", "Choose invoices"]) {

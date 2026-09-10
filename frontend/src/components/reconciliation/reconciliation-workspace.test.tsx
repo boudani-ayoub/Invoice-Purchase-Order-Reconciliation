@@ -3,21 +3,20 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReconciliationWorkspace } from "@/components/reconciliation/reconciliation-workspace";
-import {
-  ReconciliationRequestError,
-  reconcileFiles,
-} from "@/lib/api/reconciliation";
+import { ReconciliationRequestError } from "@/lib/api/reconciliation";
 import { RECONCILIATION_REPORT_FIXTURE } from "@/test/fixtures/reconciliation";
 import type { ReconciliationErrorDetail } from "@/types/reconciliation";
+import { createRun } from "@/lib/api/runs";
+import { savedRun } from "@/test/fixtures/runs";
+import type { PersistentRunCreateResponse } from "@/types/runs";
 
-vi.mock("@/lib/api/reconciliation", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/reconciliation")>(
-    "@/lib/api/reconciliation",
-  );
-  return { ...actual, reconcileFiles: vi.fn() };
+vi.mock("@/lib/api/runs", () => ({ createRun: vi.fn() }));
+
+const mockedReconcileFiles = vi.mocked(createRun);
+const SAVED_REPORT = savedRun({
+  ...RECONCILIATION_REPORT_FIXTURE,
+  mode: "three-way",
 });
-
-const mockedReconcileFiles = vi.mocked(reconcileFiles);
 
 async function selectAllFiles(user: UserEvent) {
   await user.upload(
@@ -39,7 +38,9 @@ async function submitWithAllFiles(user: UserEvent) {
   await user.click(screen.getByRole("button", { name: "Run reconciliation" }));
 }
 
-function apiError(detail: ReconciliationErrorDetail): ReconciliationRequestError {
+function apiError(
+  detail: ReconciliationErrorDetail,
+): ReconciliationRequestError {
   return new ReconciliationRequestError(detail);
 }
 
@@ -68,7 +69,8 @@ describe("ReconciliationWorkspace", () => {
 
   it("prevents duplicate submission and announces loading", async () => {
     const user = userEvent.setup();
-    let finishRequest: ((value: typeof RECONCILIATION_REPORT_FIXTURE) => void) | undefined;
+    let finishRequest:
+      ((value: PersistentRunCreateResponse) => void) | undefined;
     mockedReconcileFiles.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -81,29 +83,41 @@ describe("ReconciliationWorkspace", () => {
 
     const loadingButton = screen.getByRole("button", { name: "Reconciling…" });
     expect(loadingButton).toBeDisabled();
-    expect(screen.getByText("Reconciliation is in progress.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Reconciliation is in progress."),
+    ).toBeInTheDocument();
     await user.click(loadingButton);
     expect(mockedReconcileFiles).toHaveBeenCalledOnce();
 
-    finishRequest?.(RECONCILIATION_REPORT_FIXTURE);
-    expect(await screen.findByRole("heading", { name: "Reconciliation results" })).toBeInTheDocument();
+    finishRequest?.(SAVED_REPORT);
+    expect(
+      await screen.findByRole("heading", { name: "Reconciliation results" }),
+    ).toBeInTheDocument();
   });
 
   it("renders authoritative summary, issue counts, disputed amounts, and results", async () => {
     const user = userEvent.setup();
-    mockedReconcileFiles.mockResolvedValue(RECONCILIATION_REPORT_FIXTURE);
+    mockedReconcileFiles.mockResolvedValue(SAVED_REPORT);
     render(<ReconciliationWorkspace />);
 
     await submitWithAllFiles(user);
 
-    const resultsHeading = await screen.findByRole("heading", { name: "Reconciliation results" });
+    const resultsHeading = await screen.findByRole("heading", {
+      name: "Reconciliation results",
+    });
     expect(resultsHeading).toHaveFocus();
-    expect(screen.getByText("Invoices processed").parentElement).toHaveTextContent("15");
-    expect(screen.getByText("Invoice lines").parentElement).toHaveTextContent("17");
-    expect(screen.getByText("Matched", { selector: "p" }).parentElement).toHaveTextContent("6");
-    expect(screen.getByText("Review required", { selector: "p" }).parentElement).toHaveTextContent(
-      "11",
+    expect(
+      screen.getByText("Invoices processed").parentElement,
+    ).toHaveTextContent("15");
+    expect(screen.getByText("Invoice lines").parentElement).toHaveTextContent(
+      "17",
     );
+    expect(
+      screen.getByText("Matched", { selector: "p" }).parentElement,
+    ).toHaveTextContent("6");
+    expect(
+      screen.getByText("Review required", { selector: "p" }).parentElement,
+    ).toHaveTextContent("11");
     expect(screen.getByText("10,199.00")).toBeInTheDocument();
     expect(screen.getByText("2,450.00")).toBeInTheDocument();
     expect(screen.getAllByText("Price mismatch")).not.toHaveLength(0);
@@ -112,7 +126,7 @@ describe("ReconciliationWorkspace", () => {
 
   it("focuses review items by default and supports status and issue filtering", async () => {
     const user = userEvent.setup();
-    mockedReconcileFiles.mockResolvedValue(RECONCILIATION_REPORT_FIXTURE);
+    mockedReconcileFiles.mockResolvedValue(SAVED_REPORT);
     render(<ReconciliationWorkspace />);
     await submitWithAllFiles(user);
     await screen.findByRole("heading", { name: "Reconciliation results" });
@@ -143,7 +157,8 @@ describe("ReconciliationWorkspace", () => {
             row: 2,
             column: "ordered_quantity",
             value: "-3",
-            reason: "ordered_quantity must be a finite decimal greater than zero",
+            reason:
+              "ordered_quantity must be a finite decimal greater than zero",
           },
         ],
       }),
@@ -155,15 +170,23 @@ describe("ReconciliationWorkspace", () => {
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText("Purchase orders")).toBeInTheDocument();
     expect(within(alert).getByText("Row 2")).toBeInTheDocument();
-    expect(within(alert).getByText("Column: ordered_quantity")).toBeInTheDocument();
+    expect(
+      within(alert).getByText("Column: ordered_quantity"),
+    ).toBeInTheDocument();
     expect(within(alert).getByText("Value: -3")).toBeInTheDocument();
-    expect(alert).toHaveTextContent("must be a finite decimal greater than zero");
+    expect(alert).toHaveTextContent(
+      "must be a finite decimal greater than zero",
+    );
   });
 
   it("explains an oversized upload using the backend file and limit", async () => {
     const user = userEvent.setup();
     mockedReconcileFiles.mockRejectedValue(
-      apiError({ kind: "file_too_large", file: "invoices", maxBytes: 10 * 1024 * 1024 }),
+      apiError({
+        kind: "file_too_large",
+        file: "invoices",
+        maxBytes: 10 * 1024 * 1024,
+      }),
     );
     render(<ReconciliationWorkspace />);
 
@@ -178,17 +201,17 @@ describe("ReconciliationWorkspace", () => {
     [
       { kind: "network" } as const,
       "The reconciliation service could not be reached",
-      "Check that the backend is running and try again.",
+      "Check your connection and History before retrying. A lost response may still have saved a run.",
     ],
     [
       { kind: "timeout" } as const,
       "The reconciliation request timed out",
-      "The service may still be processing the files. Wait a moment, then try again.",
+        "The service may still finish saving this run. Check History before retrying; another submission creates a separate run.",
     ],
     [
       { kind: "server" } as const,
       "Something went wrong while processing the reconciliation",
-      "The service returned an internal error. Please try again.",
+      "The service did not confirm a saved result. Check History before retrying.",
     ],
   ])("shows a safe %s message", async (detail, title, message) => {
     const user = userEvent.setup();
@@ -200,20 +223,28 @@ describe("ReconciliationWorkspace", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(title);
     expect(alert).toHaveTextContent(message);
-    expect(within(alert).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(
+      within(alert).getByRole("button", { name: "Try again" }),
+    ).toBeInTheDocument();
   });
 
   it("starts a new reconciliation without reloading the page", async () => {
     const user = userEvent.setup();
-    mockedReconcileFiles.mockResolvedValue(RECONCILIATION_REPORT_FIXTURE);
+    mockedReconcileFiles.mockResolvedValue(SAVED_REPORT);
     render(<ReconciliationWorkspace />);
     await submitWithAllFiles(user);
     await screen.findByRole("heading", { name: "Reconciliation results" });
 
-    await user.click(screen.getByRole("button", { name: "Start new reconciliation" }));
+    await user.click(
+      screen.getByRole("button", { name: "Start new reconciliation" }),
+    );
 
-    expect(screen.queryByRole("heading", { name: "Reconciliation results" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Reconciliation results" }),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("No file selected")).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "Run reconciliation" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Run reconciliation" }),
+    ).toBeDisabled();
   });
 });
