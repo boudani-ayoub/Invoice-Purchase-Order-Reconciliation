@@ -11,7 +11,8 @@ with all four jobs successful in [Actions run 34535210216](https://github.com/bo
 This phase adds organization-scoped investigation workflow to existing findings, not a second
 financial result model. No deterministic engine, loader, report renderer, authoritative monetary
 summary, or previous migration is redesigned. The unrelated untracked root `package-lock.json`
-is preserved and excluded. No Phase 4 push is authorized; remote CI has not run this phase.
+is preserved and excluded. The subsequent authorized push published Phase 4 at
+`875ea7792ea59282752b560a842b4aa0ae99f809`; remote CI completed successfully.
 
 ## Decisions and ambiguities resolved
 
@@ -258,7 +259,11 @@ Backend state, its event transaction and API are committed together to avoid an 
 unauthorized or unaudited workflow implementation. Tests, browser integration and documentation
 remain separately reviewable. The final documentation commit's SHA is reported in the completion
 handoff to avoid a self-referential SHA in its contents.
-There is no Phase 4 remote CI result because this phase has not been pushed.
+Phase 4 was subsequently pushed at `875ea7792ea59282752b560a842b4aa0ae99f809`.
+[GitHub Actions run 34648366678](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34648366678)
+ran on that exact HEAD for the push event and completed successfully. Python 3.11, Python 3.12,
+PostgreSQL/authentication integration, and frontend/authenticated browser verification all succeeded.
+The historical local verification above is unchanged.
 
 | Commit | Purpose |
 | --- | --- |

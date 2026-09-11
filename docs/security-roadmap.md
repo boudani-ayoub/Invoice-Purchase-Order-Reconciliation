@@ -31,7 +31,7 @@ needs operational approval. Phase 1 history remains in its report and data-model
 1. **Phase 1 — complete:** four analysis modes and optional PostgreSQL foundation.
 2. **Phase 2 — complete:** identity, secure sessions, tenant authorization, protected routes.
 3. **Phase 3 — complete:** persistent runs, metadata/archive CRUD, provenance, history, and actor-aware events.
-4. **Phase 4 — complete locally:** AP exception workflow, assignment, resolution lifecycle, due dates, append-only comments/events, and in-app reminders. Awaiting an authorized push and remote CI.
+4. **Phase 4 — complete:** AP exception workflow, assignment, resolution lifecycle, due dates, append-only comments/events, and in-app reminders. Pushed at `875ea7792ea59282752b560a842b4aa0ae99f809`; all four jobs passed in GitHub Actions run `34648366678`.
 5. **Phase 5 — next:** AP Manager Dashboard + measured KPIs.
 6. **Phase 6:** organization administration, roles, audit, and governance.
 7. **Phase 7:** inventory foundation and explicit stock movements.
