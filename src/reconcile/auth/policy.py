@@ -12,10 +12,23 @@ class Permission(StrEnum):
     VIEW_RUN_HISTORY = "VIEW_RUN_HISTORY"
     UPDATE_RUN_METADATA = "UPDATE_RUN_METADATA"
     ARCHIVE_RUN = "ARCHIVE_RUN"
+    VIEW_FINDING_WORKFLOW = "VIEW_FINDING_WORKFLOW"
+    COMMENT_FINDING = "COMMENT_FINDING"
+    TRANSITION_ASSIGNED_FINDING = "TRANSITION_ASSIGNED_FINDING"
+    TRANSITION_ANY_FINDING = "TRANSITION_ANY_FINDING"
+    MANAGE_FINDING = "MANAGE_FINDING"
 
 
 ROLE_PERMISSIONS = {
-    MembershipRole.MEMBER: frozenset({Permission.RUN_ANALYSIS, Permission.VIEW_RUN_HISTORY}),
+    MembershipRole.MEMBER: frozenset(
+        {
+            Permission.RUN_ANALYSIS,
+            Permission.VIEW_RUN_HISTORY,
+            Permission.VIEW_FINDING_WORKFLOW,
+            Permission.COMMENT_FINDING,
+            Permission.TRANSITION_ASSIGNED_FINDING,
+        }
+    ),
     MembershipRole.AP_MANAGER: frozenset(Permission),
     MembershipRole.ORG_ADMIN: frozenset(Permission),
 }

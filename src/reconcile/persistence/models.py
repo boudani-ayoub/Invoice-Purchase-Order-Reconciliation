@@ -25,6 +25,7 @@ from reconcile.analysis.models import AnalysisMode, SourceType
 from reconcile.models import IssueCode
 from reconcile.persistence.base import Base, Record, TenantRecord, tenant_constraints, tenant_fk
 from reconcile.persistence.run_policy import NOTE_LIMIT, TITLE_LIMIT
+from reconcile.persistence.workflow_policy import WORKFLOW_TEXT_LIMIT
 
 
 class RecordStatus(StrEnum):
@@ -47,6 +48,7 @@ class RunStatus(StrEnum):
 
 class FindingStatus(StrEnum):
     OPEN = "OPEN"
+    IN_REVIEW = "IN_REVIEW"
     RESOLVED = "RESOLVED"
 
 
@@ -361,6 +363,33 @@ class Finding(TenantRecord, Base):
             name="subject_required",
         ),
         Index("ix_findings_run_status", "organization_id", "analysis_run_id", "status"),
+        ForeignKeyConstraint(
+            ["organization_id", "assignee_user_id"],
+            ["organization_memberships.organization_id", "organization_memberships.user_id"],
+            name="fk_findings_assignee_membership",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "resolved_by_user_id"],
+            ["organization_memberships.organization_id", "organization_memberships.user_id"],
+            name="fk_findings_resolver_membership",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint(
+            "resolution_note IS NULL OR "
+            f"(length(btrim(resolution_note)) BETWEEN 1 AND {WORKFLOW_TEXT_LIMIT})",
+            name="resolution_note_length",
+        ),
+        CheckConstraint(
+            "(status = 'RESOLVED' AND resolved_at IS NOT NULL AND resolved_by_user_id IS NOT NULL "
+            "AND resolution_note IS NOT NULL) OR (status <> 'RESOLVED' AND resolved_at IS NULL "
+            "AND resolved_by_user_id IS NULL AND resolution_note IS NULL)",
+            name="resolution_state",
+        ),
+        Index("ix_findings_queue", "organization_id", "status", "assignee_user_id", "due_at"),
+        Index("ix_findings_reminders", "organization_id", "reminder_at"),
+        Index("ix_findings_chronology", "organization_id", "created_at", "id"),
     )
     analysis_run_id: Mapped[UUID]
     code: Mapped[IssueCode] = mapped_column(enum_type(IssueCode))
@@ -371,6 +400,13 @@ class Finding(TenantRecord, Base):
     invoice_line_id: Mapped[UUID | None]
     purchase_order_line_id: Mapped[UUID | None]
     goods_receipt_line_id: Mapped[UUID | None]
+    assignee_user_id: Mapped[UUID | None]
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_by_user_id: Mapped[UUID | None]
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
 
 
 class ResultSnapshot(TenantRecord, Base):

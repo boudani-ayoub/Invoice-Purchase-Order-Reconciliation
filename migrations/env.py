@@ -3,7 +3,7 @@
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from reconcile.persistence import audit, auth_models, models  # noqa: F401
+from reconcile.persistence import audit, auth_models, models, workflow_events  # noqa: F401
 from reconcile.persistence.base import Base
 from reconcile.persistence.session import database_url
 

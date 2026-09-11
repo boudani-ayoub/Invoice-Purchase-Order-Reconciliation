@@ -4,6 +4,8 @@ from reconcile.analysis.models import AnalysisMode
 
 ANALYSES_PATH = "/api/v1/analyses"
 RUNS_PATH = "/api/v1/runs"
+FINDINGS_PATH = "/api/v1/findings"
+WORKFLOW_PATH = "/api/v1/workflow"
 MULTIPART_PATHS = frozenset(
     {
         "/api/v1/reconcile",
