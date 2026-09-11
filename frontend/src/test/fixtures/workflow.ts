@@ -1,0 +1,53 @@
+import type { FindingDetail, FindingEvent } from "@/types/workflow";
+
+export const WORKFLOW_DETAIL: FindingDetail = {
+  server_now: "2026-01-02T00:00:00+00:00",
+  finding: {
+    id: "d66e13cf-f92a-4529-a73c-65441dc5ba12",
+    analysis_run_id: "3f755a21-f58b-4247-9f5b-f20d31b2a523",
+    code: "UNKNOWN_PO",
+    category: "REFERENCE",
+    status: "OPEN",
+    assignee_user_id: null,
+    assignee: null,
+    due_at: null,
+    reminder_at: null,
+    resolved_at: null,
+    resolved_by_user_id: null,
+    version: 1,
+    created_at: "2026-01-01T00:00:00+00:00",
+    updated_at: "2026-01-01T00:00:00+00:00",
+    overdue: false,
+    reminder_due: false,
+    resolution_note: null,
+    reference: {
+      invoice_number: "INV-X",
+      invoice_line_number: 2,
+      receipt_number: null,
+      receipt_line_number: null,
+      supplier_code: "SUP-X",
+      source_row_number: 3,
+      po_number: "MISSING-PO",
+      po_line_number: 1,
+      item_code: "ITEM-X",
+      po_reference_resolved: false,
+      item_master_resolved: false,
+    },
+    run: {
+      id: "3f755a21-f58b-4247-9f5b-f20d31b2a523",
+      title: null,
+      mode: "three-way",
+      archived: false,
+    },
+  },
+};
+export const WORKFLOW_EVENT: FindingEvent = {
+  id: "78961075-489b-4e92-891d-c846e316009a",
+  finding_id: WORKFLOW_DETAIL.finding.id,
+  actor_user_id: "actor",
+  request_id: "15ab7067-50ab-41b9-9c98-82bd11dccf8a",
+  event_type: "COMMENT_ADDED",
+  created_at: "2026-01-02T00:00:00+00:00",
+  message: "Investigating with supplier.",
+  metadata: {},
+};

@@ -1,4 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+
+process.env.E2E_WORKFLOW_SEED ??= JSON.stringify({
+  manager_email: `manager-${randomUUID()}@example.com`,
+  member_email: `member-${randomUUID()}@example.com`,
+  password: `workflow-test-${randomUUID()}`,
+  organization_name: `Workflow team ${randomUUID()}`,
+  member_name: '<img src=x onerror="window.workflowXss=true">',
+});
 
 import {
   E2E_API_HOST,

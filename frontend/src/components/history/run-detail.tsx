@@ -7,6 +7,7 @@ import { AnalysisResults } from "@/components/reconciliation/analysis-results";
 import { Button } from "@/components/ui/button";
 import { ANALYSIS_MODES } from "@/constants/analysis-modes";
 import { HISTORY_PATH, RETENTION_COPY } from "@/constants/runs";
+import { runWorkPath } from "@/constants/workflow";
 import { UPLOAD_FIELD_LABELS } from "@/constants/uploads";
 import { useRunResource } from "@/hooks/use-run-resource";
 import { getRun } from "@/lib/api/runs";
@@ -71,6 +72,21 @@ export function RunDetailPage({ runId }: { runId: string }) {
               onChanged={resource.reload}
             />
           )}
+          <section
+            aria-label="Finding workflow"
+            className="space-y-2 rounded-lg border p-4"
+          >
+            <Link
+              href={runWorkPath(detail.run.id)}
+              className="font-medium text-primary underline"
+            >
+              Work on findings from this run
+            </Link>
+            <p className="text-sm text-muted-foreground">
+              Assignment, investigation, and comments are a separate workflow.
+              They do not change this saved report.
+            </p>
+          </section>
           <section
             aria-labelledby="provenance-heading"
             className="space-y-3 rounded-lg border p-4"

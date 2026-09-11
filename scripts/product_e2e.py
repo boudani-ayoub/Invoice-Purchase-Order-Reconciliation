@@ -33,6 +33,10 @@ def main() -> None:
                 ),
             }
         )
+        if seed := os.environ.get("E2E_WORKFLOW_SEED"):
+            from scripts.workflow_e2e_seed import seed_workflow_accounts
+
+            seed_workflow_accounts(database, seed)
         uvicorn.run("reconcile.web.app:app", host=args.host, port=args.port, access_log=False)
 
 
