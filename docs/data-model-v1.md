@@ -2,7 +2,30 @@
 
 This document records the Phase 1 schema decisions; the original baseline sections below are
 historical. Phase 2 added identity; Phase 3 activates persistent runs and the additive migration
-described next. CLI and explicit stateless APIs remain database-free for business results.
+described below. Phase 4 adds the workflow overlay described next. CLI and explicit stateless APIs
+remain database-free for business results.
+
+## Product Phase 4 extension
+
+`0004` evolves `findings`, not the report representation. Status is OPEN/IN_REVIEW/RESOLVED; new
+fields are nullable `assignee_user_id`, `due_at`, `reminder_at`, `resolved_at`, `resolved_by_user_id`,
+`resolution_note`, and positive `version` default 1. Composite membership FKs keep assignee and
+resolver in the finding's organization. A resolution requires all three resolution fields;
+non-resolved findings have none. Reopening clears only current resolution, retaining event history.
+Runtime UPDATE is granted on those workflow fields and status/version only. Code, category,
+organization, run and source references stay immutable. The existing timestamp trigger remains.
+
+The 22nd table, `finding_events`, contains tenant/finding/actor/request UUIDs, event type, timestamps,
+optional plain-text message (1–4000 characters) and JSON-object metadata (at most 2048 bytes).
+Messages belong only to comments and resolutions. Composite actor-membership/finding FKs, forced
+tenant RLS, SELECT/INSERT-only runtime grants, and an UPDATE/DELETE rejection trigger protect it.
+State changes and events share one transaction. Comments append without changing finding version.
+Indexes cover organization/status/assignee/due, organization/reminder, finding chronology, and
+organization/finding/event chronology, alongside the existing organization/run/status index.
+
+Due/reminder timestamps are timezone-aware; overdue/reminder-due flags are read-time computations.
+No reminders worker, outbound delivery, payment approval, financial aggregation, or new master
+record is created. Archived runs retain actionable findings and events. See [workflow architecture](product-phase-4-report.md).
 
 ## Product Phase 3 extension
 

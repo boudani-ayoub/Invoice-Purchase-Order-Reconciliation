@@ -5,10 +5,11 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 3 saves organization-scoped analysis runs, validated source evidence,
-immutable reports, and actor-aware audit events. History supports title/note edits and reversible
+**Status:** Product Phase 4 adds an organization-scoped AP exception workflow over saved findings:
+assignment, due dates, in-app reminders, investigation status, and append-only comments/history.
+Saved reports and source evidence remain immutable. History retains metadata edits and reversible
 archive with stale-write protection. Raw uploads remain temporary. The CLI remains account-free
-and database-free. AP assignment/resolution, dashboards, admin screens, and inventory are not implemented.
+and database-free. Dashboards, payment approvals, member administration, and inventory are not implemented.
 
 ## Choose a workflow
 
@@ -286,6 +287,45 @@ See the [Phase 3 report](docs/product-phase-3-report.md),
 [persistence threat model](docs/threat-model-persistence.md), and
 [backup/restore runbook](docs/backup-restore.md).
 
+## AP exception workflow
+
+Open `/work`, or follow **Work on findings from this run** from a saved run. Filter by originating
+run, status, assignment, overdue, or reminder due. Findings from archived runs remain actionable.
+Each detail shows persisted source references, assignment, schedule, resolution, and paginated history.
+
+`OPEN → IN_REVIEW → RESOLVED`; direct `OPEN → RESOLVED` is allowed, and reopening is `RESOLVED → OPEN`.
+Resolution requires a nonblank plain-text note. It closes the investigation only: it does **not**
+approve payment, waive a discrepancy, alter source evidence, or change the authoritative saved
+report or disputed amounts. Reopening clears current resolution fields but preserves its history.
+
+Members may view/comment and transition findings assigned to themselves. AP managers and organization
+admins may transition any organization finding and manage assignment, due date, and reminder.
+Assignees must be active same-organization members; inactive historical assignments remain visible.
+There is a read-only member picker, not member or role administration.
+
+| Endpoint | Contract |
+| --- | --- |
+| `GET /api/v1/findings` | `run_id`, `status`, `assignee` (`me`, `unassigned`, member UUID), `overdue`, `reminder_due`, `limit`, `cursor` |
+| `GET /api/v1/findings/{id}` | Finding workflow and persisted source context, never recomputed results |
+| `GET /api/v1/findings/{id}/events` | Bounded keyset workflow history |
+| `PATCH /api/v1/findings/{id}` | `expected_version` plus explicit `assignee_user_id`, `due_at`, and/or `reminder_at`; null clears |
+| `POST /api/v1/findings/{id}/transition` | `expected_version`, `target_status`, `resolution_note` only for resolution |
+| `POST /api/v1/findings/{id}/comments` | `{ "text": "Investigation context" }`; append-only, no edit/delete |
+| `GET /api/v1/workflow/assignees` | Active member ID/display-name/role picker; bounded `limit`, UUID `cursor` |
+
+Pages default to 25 and cap at 100. State changes lock the finding, check its expected version,
+increment it, and append events in one transaction; stale editors receive `409`. Comments do not
+change the version. Comments and resolution notes are persistent plain text, up to 4000 Unicode
+characters; the 16 KiB JSON request ceiling also applies. No automatic mutation retry is used.
+After an uncertain network response, refresh the finding and its history before resubmitting.
+
+Due/reminder timestamps require explicit timezones and normalize to UTC. The editor labels UTC
+inputs; displayed dates use the browser timezone. Overdue means unresolved with `due_at < server_now`;
+reminder due means unresolved with `reminder_at <= server_now`. Past dates are valid. Flags are
+computed on reads, not stored. Reminders are **in-app only**: no email/push delivery or closed-app
+notifications, worker, queue, or scheduler. Refresh the queue to check current flags.
+See [the Phase 4 report](docs/product-phase-4-report.md) and [workflow threats](docs/threat-model-workflow.md).
+
 ## Frontend
 
 The frontend is a typed Next.js application under `frontend/`. A four-workflow hub opens dedicated
@@ -462,8 +502,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next product phase
 
-Product Phase 4 — AP exception workflow, assignment, resolution lifecycle, due dates, comments,
-and reminders. This is the next step, not implemented here. The complete sequence through
+Product Phase 5 — AP Manager Dashboard + measured KPIs. This is the next step, not implemented here.
+The complete sequence through
 authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
 
 ## Project history
@@ -476,7 +516,8 @@ The implementation decisions and verification evidence are preserved in
 [`Web Phase 3`](docs/web-phase-3-report.md) hardening report and
 [`Product Phase 1`](docs/product-phase-1-report.md) and
 [`Product Phase 2`](docs/product-phase-2-report.md), and
-[`Product Phase 3`](docs/product-phase-3-report.md).
+[`Product Phase 3`](docs/product-phase-3-report.md), and
+[`Product Phase 4`](docs/product-phase-4-report.md).
 
 ## License
 

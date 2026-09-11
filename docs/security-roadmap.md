@@ -11,15 +11,15 @@ needs operational approval. Phase 1 history remains in its report and data-model
 | Authentication | Argon2id 64 MiB/t3/p4; 15–128-character policy; registration, verification, generic login failures, dummy verification | Evaluate MFA, breached-password screening, SSO, and stronger abuse detection later |
 | Session management | 256-bit opaque tokens; hash-only storage; secure production cookies; idle/absolute expiry; rotation and revocation | Deployed session-retention jobs, incident response, optional user session inventory |
 | Password recovery | Hashed single-use expiring tokens; transactional reset revokes all sessions; SMTP TLS boundary | Production delivery checks, monitoring, durable mail retry if needed |
-| Authorization | Current principals and permissions on create/history/mutations; cross-tenant `404`; role/revocation tests | Phase 4: workflow-resource permissions; Phase 6: member management |
+| Authorization | Current principals on runs/workflow; locked assignee self-scope; post-lock session/role checks; cross-tenant `404` | Phase 6: member management |
 | Tenant isolation | Composite FKs; forced RLS; session-to-membership FK; verified tenant transition; separate identity role | Repeat deployed-grant checks and negative tests with future business writes |
 | CSRF | Signed cookie/session-bound proof plus trusted Origin on POST/PATCH; pre-auth, rotation, archive tests | Preserve checks on future mutations; test proxy topology |
 | Rate limiting | Atomic PostgreSQL identifier buckets for login, registration, recovery, and resend; unknown accounts included | Phase 9: network/IP and concurrency budgets; storage retention and alerting |
 | File upload | Pre-body authorization on nine routes; streamed size/hash, safe names, temporary cleanup | Phase 9: measured concurrency and proxy total-body/resource limits |
 | Input validation | Existing strict loaders and domain mapper; duplicate/unresolved preservation; atomic rollback; storage capacity errors | Measure transaction/memory budgets on large imports |
-| Logging and audit | Server request UUID; actor-aware same-transaction events; immutable audit rows; no notes/credentials in event metadata | Phase 6: audit administration; Phase 9: correlation/alerts and DB/proxy log controls |
+| Logging and audit | Server request UUID; atomic run/workflow events; immutable rows; bounded business comments/resolutions outside security metadata and raw application logs | Phase 6: audit administration; Phase 9: correlation/alerts and DB/proxy log controls |
 | Secrets | Validated private auth/DB/SMTP configuration; no secrets in browser storage or public env | Secret manager, operational rotation, deployed log review |
-| Database least privilege | Separate roles; forced RLS; runtime source/findings UPDATE denied, run UPDATE column-limited; identity cannot read business history | Deployed role drift checks, network restrictions, TLS, operational backup/restore |
+| Database least privilege | Separate roles; forced RLS; source/finding evidence UPDATE denied, run/finding workflow UPDATE column-limited; append-only events; narrow organization-bound identity directory | Deployed role drift checks, network restrictions, TLS, operational backup/restore |
 | Security headers | Focused CSP, nosniff, referrer and permissions policy; no remote browser assets | Phase 9: deployment-specific resource CSP with nonces/hashes and tested origins |
 | TLS | Reverse proxy guidance; local HTTP is supported | Phase 9: certificates, transport policy, HSTS rollout and trusted forwarded headers |
 | Dependency security | Optional DB extra, locked frontend, CI checks and Dependabot | Every phase: patch review; update the Next lint stack when its plugins support maintained ESLint |
@@ -30,9 +30,9 @@ needs operational approval. Phase 1 history remains in its report and data-model
 
 1. **Phase 1 — complete:** four analysis modes and optional PostgreSQL foundation.
 2. **Phase 2 — complete:** identity, secure sessions, tenant authorization, protected routes.
-3. **Phase 3 — current implementation:** persistent runs, metadata/archive CRUD, provenance, history, and actor-aware events.
-4. **Phase 4 — next:** AP exception workflow, assignment, resolution lifecycle, due dates, comments, and reminders.
-5. **Phase 5:** AP manager dashboard and measured KPIs.
+3. **Phase 3 — complete:** persistent runs, metadata/archive CRUD, provenance, history, and actor-aware events.
+4. **Phase 4 — complete locally:** AP exception workflow, assignment, resolution lifecycle, due dates, append-only comments/events, and in-app reminders. Awaiting an authorized push and remote CI.
+5. **Phase 5 — next:** AP Manager Dashboard + measured KPIs.
 6. **Phase 6:** organization administration, roles, audit, and governance.
 7. **Phase 7:** inventory foundation and explicit stock movements.
 8. **Phase 8:** supplier, procurement, and inventory intelligence.

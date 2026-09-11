@@ -3,11 +3,14 @@
 ## Readiness boundary
 
 The product now has first-party authentication, server-side sessions, tenant authorization, CSRF,
-and PostgreSQL-backed identifier throttles. Raw analysis files remain request-scoped; validated
+and PostgreSQL-backed identifier throttles. Phase 4 adds finding workflow with durable in-app
+follow-up dates and append-only business comments; it adds no email/push reminder worker or queue.
+Do not promise closed-app notification delivery. Raw analysis files remain request-scoped; validated
 records, reports, metadata, and audit evidence are retained in PostgreSQL. This is
 not approval for a public financial service: network resource limits, operational recovery,
 deployment-specific threat review, and monitoring are still required. See the
 [auth threat model](threat-model-auth.md), [persistence threat model](threat-model-persistence.md),
+[workflow threat model](threat-model-workflow.md),
 and [backup/restore runbook](backup-restore.md).
 
 The preferred topology uses one public HTTPS origin:
@@ -118,7 +121,7 @@ RECONCILE_ALLOWED_ORIGINS=https://app.reconcile.example.com
 ```
 
 Also set `FRONTEND_PUBLIC_URL` to the trusted frontend origin. Comma-separated additional trusted
-origins are supported. GET/POST credentialed CORS allows Content-Type and X-CSRF-Token only for
+origins are supported. GET/POST/PATCH credentialed CORS allows Content-Type and X-CSRF-Token only for
 the explicit allow-list; wildcards are rejected. Separate hosts must be same-site over HTTPS for
 SameSite=Strict cookies. Unrelated cross-site frontend/API deployments are not supported by this
 cookie policy. Prefer the same-origin topology instead of weakening the cookies.
@@ -139,6 +142,9 @@ do not add broad host wildcards or `unsafe-eval` to make a broken production pol
 - Log request time, route, status, response size, and a generated correlation identifier.
 - Do not log multipart bodies, CSV rows, response reports, filenames, query strings, or request
   headers that may contain credentials.
+- Do not log workflow comments, resolution notes, or member display text. Include findings and
+  append-only workflow events in encrypted backups and restoration verification. Archive does not
+  erase this content. Bound authenticated mutation rates/storage growth at the deployment layer.
 - Restrict log access and retention as financial metadata may still be inferable from timing and
   request volume.
 - Alert on repeated `413`, `422`, `5xx`, timeouts, restarts, memory pressure, and temporary-volume

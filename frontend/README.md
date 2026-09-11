@@ -6,6 +6,13 @@ to PostgreSQL. `/history` provides filtered, paginated history; `/history/{id}` 
 report, provenance, and permission-controlled metadata/archive/restore actions. There is no
 stateless fallback or automatic create retry: check History after an uncertain submission.
 
+`/work` is the operational exception queue; `/work/{id}` shows persisted source context and a
+separate workflow overlay. Managers/admins assign members and set UTC due/reminder times; members
+can transition their own assignments. Comments and resolution notes are persistent plain text.
+Resolution is not payment approval and never rewrites a saved report. Workflow history is append-only.
+Reminders are in-app only; refresh for server-computed due flags, with no closed-app notifications.
+Finding state writes require an expected version; conflicts and uncertain outcomes require refresh.
+
 Create local configuration from `.env.example`, then run:
 
 ```bash

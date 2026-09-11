@@ -90,8 +90,9 @@ it with ordinary user privileges and review paths before using `--force`.
 
 The CLI does not import the optional auth/database/web packages. HTTP uses separate limited
 identity and tenant database connections. Persistent create, history, metadata, archive, and restore
-use only the tenant connection after fresh authorization. Member administration and AP workflow
-remain out of scope.
+use only the tenant connection after fresh authorization. Workflow business writes use the same
+boundary; member administration remains out of scope. The read-only assignee directory uses narrow
+identity projections bound to the verified active organization and never grants runtime users access.
 
 Source import, completed run, findings, immutable snapshot, and completion audit share one
 transaction. Metadata/archive/restore and their audit event also commit or roll back together.
@@ -100,15 +101,25 @@ from the authenticated session, never a browser-supplied organization or actor. 
 IDs return the same `404` as missing IDs. Reads/mutations recheck current access; UI controls are
 not an authorization boundary. All `/api/` responses use `Cache-Control: no-store`.
 
-The runtime cannot rewrite source evidence, findings, or snapshots. Only title, note, archive
-timestamp, and version can be updated on runs. Audit events have SELECT/INSERT-only runtime grants,
+The runtime cannot rewrite source evidence, finding identity/code/category/source links, or snapshots.
+Only title, note, archive timestamp, and version can be updated on runs. Finding UPDATE is restricted
+to status, assignee, due/reminder, resolution fields, and version. Audit events have SELECT/INSERT-only runtime grants,
 forced RLS, same-tenant actor/resource foreign keys, bounded non-sensitive metadata, and a trigger
 rejecting UPDATE/DELETE. No business DELETE/TRUNCATE is granted. The identity role has no history
 or audit access. A database owner/superuser can change schema or disable protections; the audit
 trail is not cryptographic non-repudiation or protection from a compromised database administrator.
 
+Finding workflow uses separate `finding_events`, with forced RLS, same-tenant finding/actor FKs,
+SELECT/INSERT-only runtime grants and privileged-row-mutation protection. Comments/resolution text
+are intentionally retained as bounded business content, displayed as text, not HTML, and omitted
+from raw application error logs. State mutation and event insertion are atomic. Member transitions
+check the locked row's assignee; permissions/session/membership are checked again after lock waits.
+Assignment validates active same-organization membership and active account status without email lookup.
+No workflow action approves payment or changes the analysis. Reminders are stored in-app dates only.
+See the [workflow threat model](docs/threat-model-workflow.md) for reviewed threats and residual risks.
+
 Archive only removes a run from the default list. Validated financial records, filenames, reports,
-notes, and audit data remain stored, including in backups. There is no purge/retention scheduler,
+notes, finding workflow, comments, and audit data remain stored, including in backups. There is no purge/retention scheduler,
 legal-hold system, or raw-file download. Keep uploads and dumps out of public repositories.
 Use the [persistence threat model](docs/threat-model-persistence.md) and
 [backup/restore runbook](docs/backup-restore.md) before deploying persistent financial data.

@@ -1,7 +1,8 @@
 # PostgreSQL development and verification
 
 The CLI remains database-independent. The web product requires PostgreSQL for identity and
-sessions, but does not yet save financial uploads or analysis runs. Install the product extras:
+sessions, validated source evidence, saved analyses, and finding workflow. Raw uploads are temporary.
+Install the product extras:
 
 ```bash
 python -m pip install -e ".[dev,web,db,auth]"
@@ -42,7 +43,7 @@ alembic upgrade head
 alembic check
 ```
 
-The migrations install 21 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
+The migrations install 22 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
 snapshot protection, and runtime grants. No manual table/policy setup is needed. Role provisioning
 is deliberately separate from migrations: application migrations should not require CREATEROLE.
 The source distribution contains Alembic assets; the core wheel remains lightweight and DB-free.
@@ -55,13 +56,24 @@ It narrows runtime writes to inserts plus run metadata updates; source evidence/
 be rewritten. Existing accounts, password hashes, sessions, and source/report rows survive upgrade.
 Downgrading `0003` removes its metadata/audit table: use only an approved recovery procedure.
 
+`0004` adds `IN_REVIEW`, assignment/schedule/resolution fields and version 1 to existing findings,
+plus append-only `finding_events`. Existing findings stay OPEN with null workflow fields. All prior
+rows (including credentials, sessions, reports and audit) survive unchanged. New constraints and
+composite membership FKs enforce consistent resolution and tenant links. Queue/reminder/chronology
+indexes complement the existing run/status index. Runtime gains only column-level workflow UPDATE
+on findings and SELECT/INSERT on events; identity grants do not change. The migration refuses
+downgrade rather than erasing business comments/history. Any out-of-band legacy RESOLVED finding
+without resolution attribution will fail the validated constraint: review such data explicitly,
+never invent an actor or silently reopen it. Back up before migrating and use a reviewed restore
+procedure for rollback.
+
 After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identity login in
 `IDENTITY_DATABASE_URL`, never the schema-owner URL. Do not reuse the migration process environment.
 `tenant_session(engine, verified_organization_uuid)` starts a transaction, binds transaction-local
 context, commits success and rolls back failure. It does **not** verify membership. Phase 2 checks
 session, active user, active membership, and permission before entering this helper, then rechecks
 membership and organization under tenant RLS. Identity policies apply only to the identity group;
-all 21 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
+all 22 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
 
 ## Integration tests
 
@@ -113,7 +125,12 @@ on PATH or set test-only `POSTGRES_BIN` to their directory; the test reports a s
 It restores synthetic data into a second disposable database and checks snapshot, audit, RLS,
 and identity-role isolation. This is not scheduled production backup coverage.
 
-See [the Phase 3 report](product-phase-3-report.md) for current tested versions and counts, and
+Browser workflow tests generate a private `E2E_WORKFLOW_SEED` in the Playwright process and pass it
+only to the disposable API launcher. It seeds synthetic manager/member memberships through the
+launcher-owned database. This is not a production account setup or an HTTP administration endpoint;
+do not put this variable in public/frontend configuration or deploy the test launcher.
+
+See [the Phase 4 report](product-phase-4-report.md) for current tested versions and counts, and
 [data-model-v1.md](data-model-v1.md) for ownership, immutable snapshots, duplicate preservation,
 deletion rules, and unresolved references. Follow [backup/restore](backup-restore.md) for operational
 credential separation and restoration checks.
