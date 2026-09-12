@@ -41,6 +41,7 @@ export interface RunMutation {
   expected_version: number;
 }
 export interface HistoryQuery {
+  limit?: number;
   mode?: AnalysisMode;
   archived: boolean;
   cursor?: string;

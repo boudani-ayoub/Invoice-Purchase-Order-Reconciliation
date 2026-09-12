@@ -17,6 +17,17 @@ vi.mock("./transport", () => ({ apiFetch: vi.fn() }));
 const detail = savedRun(ANALYSIS_REPORTS[0]);
 beforeEach(() => vi.mocked(apiFetch).mockReset());
 
+it("reuses History with a five-run dashboard limit", async () => {
+  vi.mocked(apiFetch).mockResolvedValue(
+    Response.json({ items: [], next_cursor: null }),
+  );
+  await listRuns({ archived: false, limit: 5 });
+  expect(apiFetch).toHaveBeenCalledWith(
+    `${RUNS_API_PATH}?archived=false&limit=5`,
+    expect.any(Object),
+  );
+});
+
 it("sends bounded server-side filters without exposing snapshots in list requests", async () => {
   vi.mocked(apiFetch).mockResolvedValue(
     Response.json({ items: [detail.run], next_cursor: null }),

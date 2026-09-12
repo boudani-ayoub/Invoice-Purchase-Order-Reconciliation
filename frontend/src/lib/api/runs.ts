@@ -140,7 +140,7 @@ export async function listRuns(
 ): Promise<RunListResponse> {
   const params = new URLSearchParams({
     archived: String(query.archived),
-    limit: String(HISTORY_PAGE_SIZE),
+    limit: String(query.limit ?? HISTORY_PAGE_SIZE),
   });
   if (query.mode) params.set("mode", query.mode);
   if (query.cursor) params.set("cursor", query.cursor);

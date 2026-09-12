@@ -10,6 +10,7 @@ import { ANALYSIS_HUB_PATH } from "@/constants/analysis-modes";
 import { AUTH_ROUTES } from "@/constants/auth";
 import { HISTORY_PATH } from "@/constants/runs";
 import { WORK_PATH } from "@/constants/workflow";
+import { canViewDashboard, DASHBOARD_PATH } from "@/constants/dashboard";
 
 export function ProtectedApp({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
@@ -87,6 +88,14 @@ export function ProtectedApp({ children }: { children: React.ReactNode }) {
           >
             Work
           </Link>
+          {canViewDashboard(active?.role) && (
+            <Link
+              href={DASHBOARD_PATH}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Dashboard
+            </Link>
+          )}
           <div className="flex min-w-0 flex-wrap items-center gap-4">
             {session.memberships.length > 1 ? (
               <div className="space-y-1">
