@@ -67,6 +67,13 @@ without resolution attribution will fail the validated constraint: review such d
 never invent an actor or silently reopen it. Back up before migrating and use a reviewed restore
 procedure for rollback.
 
+`0005` adds only `ix_finding_events_activity (organization_id, event_type, created_at)` for manager
+period queries. It preserves every table, row, policy and grant. Clean upgrade, 0004 upgrade,
+metadata drift, index downgrade/re-upgrade and retained workflow/session/source/report rows are
+tested. Standard index creation can block writes: plan maintenance and deployment-specific
+timeouts. Downgrading 0005 drops only its index; 0004's no-history-erasure boundary remains.
+See [dashboard query evidence](dashboard-metrics.md#query-design-and-cost).
+
 After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identity login in
 `IDENTITY_DATABASE_URL`, never the schema-owner URL. Do not reuse the migration process environment.
 `tenant_session(engine, verified_organization_uuid)` starts a transaction, binds transaction-local

@@ -11,7 +11,7 @@ needs operational approval. Phase 1 history remains in its report and data-model
 | Authentication | Argon2id 64 MiB/t3/p4; 15–128-character policy; registration, verification, generic login failures, dummy verification | Evaluate MFA, breached-password screening, SSO, and stronger abuse detection later |
 | Session management | 256-bit opaque tokens; hash-only storage; secure production cookies; idle/absolute expiry; rotation and revocation | Deployed session-retention jobs, incident response, optional user session inventory |
 | Password recovery | Hashed single-use expiring tokens; transactional reset revokes all sessions; SMTP TLS boundary | Production delivery checks, monitoring, durable mail retry if needed |
-| Authorization | Current principals on runs/workflow; locked assignee self-scope; post-lock session/role checks; cross-tenant `404` | Phase 6: member management |
+| Authorization | Current principals on runs/workflow/dashboard; centralized manager permission; locked assignee self-scope; cross-tenant resource `404`, manager dashboard `403` for MEMBER | Phase 6: member management |
 | Tenant isolation | Composite FKs; forced RLS; session-to-membership FK; verified tenant transition; separate identity role | Repeat deployed-grant checks and negative tests with future business writes |
 | CSRF | Signed cookie/session-bound proof plus trusted Origin on POST/PATCH; pre-auth, rotation, archive tests | Preserve checks on future mutations; test proxy topology |
 | Rate limiting | Atomic PostgreSQL identifier buckets for login, registration, recovery, and resend; unknown accounts included | Phase 9: network/IP and concurrency budgets; storage retention and alerting |
@@ -32,8 +32,8 @@ needs operational approval. Phase 1 history remains in its report and data-model
 2. **Phase 2 — complete:** identity, secure sessions, tenant authorization, protected routes.
 3. **Phase 3 — complete:** persistent runs, metadata/archive CRUD, provenance, history, and actor-aware events.
 4. **Phase 4 — complete:** AP exception workflow, assignment, resolution lifecycle, due dates, append-only comments/events, and in-app reminders. Pushed at `875ea7792ea59282752b560a842b4aa0ae99f809`; all four jobs passed in GitHub Actions run `34648366678`.
-5. **Phase 5 — next:** AP Manager Dashboard + measured KPIs.
-6. **Phase 6:** organization administration, roles, audit, and governance.
+5. **Phase 5 — implemented locally, not pushed:** manager-only read model, current-state counts, bounded UTC event activity, workload and age; financial summaries remain per run. See [metric semantics](dashboard-metrics.md), [verification report](product-phase-5-report.md) and [threat review](threat-model-dashboard.md).
+6. **Phase 6 — next, not started:** organization administration, roles, audit, and governance.
 7. **Phase 7:** inventory foundation and explicit stock movements.
 8. **Phase 8:** supplier, procurement, and inventory intelligence.
 9. **Phase 9:** authenticated production deployment and final threat model.

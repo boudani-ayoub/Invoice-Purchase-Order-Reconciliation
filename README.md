@@ -5,11 +5,16 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 4 adds an organization-scoped AP exception workflow over saved findings:
+**Status:** Product Phase 5 adds a manager-only dashboard for current backlog, UTC workflow
+activity, issue mix, assignee workload and unresolved age. Recent analyses retain separately
+labeled per-run summaries; no cross-run financial total is computed. Phase 4's workflow provides
 assignment, due dates, in-app reminders, investigation status, and append-only comments/history.
 Saved reports and source evidence remain immutable. History retains metadata edits and reversible
 archive with stale-write protection. Raw uploads remain temporary. The CLI remains account-free
-and database-free. Dashboards, payment approvals, member administration, and inventory are not implemented.
+and database-free. Payment approvals, member administration, and inventory are not implemented.
+See the [dashboard metric contract](docs/dashboard-metrics.md),
+[Phase 5 report](docs/product-phase-5-report.md), and [dashboard threat review](docs/threat-model-dashboard.md).
+AP managers and organization administrators can open `/dashboard`; members retain Work and History.
 
 ## Choose a workflow
 

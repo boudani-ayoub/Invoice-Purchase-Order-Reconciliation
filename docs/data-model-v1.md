@@ -5,6 +5,14 @@ historical. Phase 2 added identity; Phase 3 activates persistent runs and the ad
 described below. Phase 4 adds the workflow overlay described next. CLI and explicit stateless APIs
 remain database-free for business results.
 
+## Product Phase 5 extension
+
+`0005` adds only `ix_finding_events_activity (organization_id, event_type, created_at)` to support
+bounded manager activity queries. All 22 tables, persisted rows, workflow/evidence boundaries,
+policies and grants remain unchanged. Dashboard counts are SQL read models, not stored metrics
+or new monetary truth. See [the metric contract](dashboard-metrics.md) for cohort/window semantics,
+the measured index rationale, pagination bounds and per-run financial exclusions.
+
 ## Product Phase 4 extension
 
 `0004` evolves `findings`, not the report representation. Status is OPEN/IN_REVIEW/RESOLVED; new

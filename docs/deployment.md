@@ -5,7 +5,11 @@
 The product now has first-party authentication, server-side sessions, tenant authorization, CSRF,
 and PostgreSQL-backed identifier throttles. Phase 4 adds finding workflow with durable in-app
 follow-up dates and append-only business comments; it adds no email/push reminder worker or queue.
-Do not promise closed-app notification delivery. Raw analysis files remain request-scoped; validated
+Do not promise closed-app notification delivery. Phase 5 adds manager-only read aggregates and
+one event activity index, not a global financial report. Apply migration 0005 with a maintenance
+window and reviewed timeout policy; measure large-tenant aggregate and median costs before public
+use. See the [dashboard threat review](threat-model-dashboard.md).
+Raw analysis files remain request-scoped; validated
 records, reports, metadata, and audit evidence are retained in PostgreSQL. This is
 not approval for a public financial service: network resource limits, operational recovery,
 deployment-specific threat review, and monitoring are still required. See the

@@ -50,7 +50,8 @@ The synthetic workflow seeder is imported only by the disposable test launcher a
 endpoint. It creates random test credentials supplied privately by Playwright, not shipped accounts.
 Never deploy the test launcher or expose `E2E_WORKFLOW_SEED` via public environment variables.
 
-No Phase 5 dashboard, payment approval, legal/penalty logic, member administration, outbound
+This Phase 4 review is supplemented by the [Phase 5 dashboard review](threat-model-dashboard.md).
+No payment approval, legal/penalty logic, member administration, outbound
 reminder delivery, queue, purge, MFA, or SSO is introduced. This review is not certification or
 production-readiness approval. See [persistence threats](threat-model-persistence.md),
 [deployment](deployment.md), and [security roadmap](security-roadmap.md).

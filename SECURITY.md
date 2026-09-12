@@ -63,6 +63,14 @@ it with ordinary user privileges and review paths before using `--force`.
 
 ## Frontend boundary
 
+Dashboard counts and activity are sensitive tenant data. All four `/api/v1/dashboard/*` GET routes
+require a live session and current `VIEW_MANAGER_DASHBOARD` permission (AP_MANAGER/ORG_ADMIN),
+with verified tenant context and forced RLS; hiding navigation is not authorization. The read model
+excludes private notes, email, credentials and session data. It reuses bounded identity labels
+without expanding database grants. Per-run monetary summaries are never summed into an
+organization-wide exposure. See [dashboard threats](docs/threat-model-dashboard.md) and
+[metric semantics and query limits](docs/dashboard-metrics.md).
+
 - `NEXT_PUBLIC_API_BASE_URL` is intentionally browser-visible configuration and accepts only an
   HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
 - `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` is public build configuration. It defaults to 120 seconds
