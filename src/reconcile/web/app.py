@@ -107,11 +107,13 @@ def create_app(
     application.add_middleware(SafeErrorsMiddleware)
     application.add_middleware(RequestIdMiddleware)
     application.include_router(auth_router)
+    from reconcile.web.dashboard import router as dashboard_router
     from reconcile.web.runs import router as runs_router
     from reconcile.web.workflow import router as workflow_router
 
     application.include_router(runs_router)
     application.include_router(workflow_router)
+    application.include_router(dashboard_router)
     configured_origins = _resolve_allowed_origins(allowed_origins)
     if configured_origins:
         application.add_middleware(

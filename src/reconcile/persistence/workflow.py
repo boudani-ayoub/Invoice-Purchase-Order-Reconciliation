@@ -13,6 +13,7 @@ from reconcile.auth.service_errors import AuthError
 from reconcile.auth.sessions import Sessions
 from reconcile.persistence import models as db
 from reconcile.persistence import workflow_events
+from reconcile.persistence.member_labels import member_labels
 from reconcile.persistence.runs import decode_cursor, encode_cursor
 from reconcile.persistence.workflow_events import FindingEvent, FindingEventType
 from reconcile.persistence.workflow_policy import (
@@ -356,28 +357,10 @@ class Workflow:
 
     def _assignee_labels(self, organization: UUID, findings: list[db.Finding]) -> dict:
         ids = {finding.assignee_user_id for finding in findings if finding.assignee_user_id}
-        if not ids:
-            return {}
-        with Session(self.sessions.identity) as session:
-            rows = session.execute(
-                select(
-                    db.User.id,
-                    db.User.display_name,
-                    db.User.status,
-                    db.OrganizationMembership.status,
-                )
-                .join(db.OrganizationMembership, db.OrganizationMembership.user_id == db.User.id)
-                .where(
-                    db.OrganizationMembership.organization_id == organization, db.User.id.in_(ids)
-                )
-            )
-            return {
-                user_id: {
-                    "display_name": name,
-                    "active": user_status == member_status == db.RecordStatus.ACTIVE,
-                }
-                for user_id, name, user_status, member_status in rows
-            }
+        return {
+            user_id: {"display_name": label["display_name"], "active": label["active"]}
+            for user_id, label in member_labels(self.sessions.identity, organization, ids).items()
+        }
 
     def _validate_assignee(self, organization: UUID, user_id: UUID) -> None:
         with Session(self.sessions.identity) as session:

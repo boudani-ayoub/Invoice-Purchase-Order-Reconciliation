@@ -47,6 +47,7 @@ class FindingEvent(TenantRecord, Base):
             name="message_type",
         ),
         Index("ix_finding_events_history", "organization_id", "finding_id", "created_at", "id"),
+        Index("ix_finding_events_activity", "organization_id", "event_type", "created_at"),
     )
     finding_id: Mapped[UUID]
     actor_user_id: Mapped[UUID]
