@@ -254,8 +254,7 @@ def downgrade() -> None:
     if retained:
         raise RuntimeError("Phase 6 governance history cannot be downgraded safely")
     op.execute(
-        "REVOKE UPDATE (role, status, version) ON organization_memberships "
-        "FROM reconcile_identity"
+        "REVOKE UPDATE (role, status, version) ON organization_memberships FROM reconcile_identity"
     )
     op.execute("REVOKE UPDATE (name, version) ON organizations FROM reconcile_identity")
     op.drop_table("governance_events")

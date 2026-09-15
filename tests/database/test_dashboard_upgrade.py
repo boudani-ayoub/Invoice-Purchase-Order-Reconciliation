@@ -72,9 +72,7 @@ def test_phase_four_index_upgrade_preserves_rows_schema_and_security(auth, monke
                         for row in connection.execute(
                             text(
                                 "SELECT "
-                                + ", ".join(
-                                    f'"{column["name"]}"' for column in columns[table]
-                                )
+                                + ", ".join(f'"{column["name"]}"' for column in columns[table])
                                 + f' FROM "{table}"'
                             )
                         )
