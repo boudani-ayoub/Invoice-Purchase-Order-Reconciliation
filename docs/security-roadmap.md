@@ -32,7 +32,7 @@ needs operational approval. Phase 1 history remains in its report and data-model
 2. **Phase 2 — complete:** identity, secure sessions, tenant authorization, protected routes.
 3. **Phase 3 — complete:** persistent runs, metadata/archive CRUD, provenance, history, and actor-aware events.
 4. **Phase 4 — complete:** AP exception workflow, assignment, resolution lifecycle, due dates, append-only comments/events, and in-app reminders. Pushed at `875ea7792ea59282752b560a842b4aa0ae99f809`; all four jobs passed in GitHub Actions run `34648366678`.
-5. **Phase 5 — implemented locally, not pushed:** manager-only read model, current-state counts, bounded UTC event activity, workload and age; financial summaries remain per run. See [metric semantics](dashboard-metrics.md), [verification report](product-phase-5-report.md) and [threat review](threat-model-dashboard.md).
+5. **Phase 5 — complete:** manager-only read model, current-state counts, bounded UTC event activity, workload and age; financial summaries remain per run. Pushed at `0b95ecae64b4191e2904d862851dfc34e4bf7bf8`; all four jobs passed in GitHub Actions run `34921520243`. See [metric semantics](dashboard-metrics.md), [verification report](product-phase-5-report.md) and [threat review](threat-model-dashboard.md).
 6. **Phase 6 — next, not started:** organization administration, roles, audit, and governance.
 7. **Phase 7:** inventory foundation and explicit stock movements.
 8. **Phase 8:** supplier, procurement, and inventory intelligence.
