@@ -43,7 +43,7 @@ alembic upgrade head
 alembic check
 ```
 
-The migrations install 24 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
+The migrations install 27 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
 snapshot protection, and runtime grants. No manual table/policy setup is needed. Role provisioning
 is deliberately separate from migrations: application migrations should not require CREATEROLE.
 The source distribution contains Alembic assets; the core wheel remains lightweight and DB-free.
@@ -84,13 +84,25 @@ both new tables are empty and all new versions remain 1; otherwise it raises ins
 governance history. Back up and rehearse upgrade/restore before applying it outside a disposable
 database.
 
+`0007` adds nullable item base units and optimistic item versions, plus tenant-owned
+`inventory_locations`, append-only `inventory_operations`, and append-only `stock_movements`.
+Existing items migrate with version 1 and `base_uom = NULL`; no goods receipt or other procurement
+evidence is converted to stock. Runtime gets SELECT/INSERT on the inventory ledger and only
+column-scoped master updates; it has no ledger UPDATE/DELETE, while immutable and validation
+triggers provide defense-in-depth. All inventory tables use forced tenant RLS and tenant-leading
+foreign keys/indexes. Identity grants do not change. Clean and `0006`→head upgrades are tested.
+Downgrade is refused after inventory/master metadata exists instead of erasing the ledger. See the
+[inventory ledger contract](inventory-ledger.md) before adding another inventory writer; every
+writer must follow the same item-then-sorted-location locking protocol.
+
 After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identity login in
 `IDENTITY_DATABASE_URL`, never the schema-owner URL. Do not reuse the migration process environment.
 `tenant_session(engine, verified_organization_uuid)` starts a transaction, binds transaction-local
 context, commits success and rolls back failure. It does **not** verify membership. Authorization checks
 session, active user, active membership, and permission before entering this helper, then rechecks
 membership and organization under tenant RLS. Identity policies apply only to the identity group;
-all 24 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
+all tenant and identity tables keep their configured ENABLE/FORCE RLS boundary. No SECURITY
+DEFINER escape hatch is added.
 
 ## Integration tests
 
@@ -142,12 +154,12 @@ on PATH or set test-only `POSTGRES_BIN` to their directory; the test reports a s
 It restores synthetic data into a second disposable database and checks snapshot, audit, RLS,
 and identity-role isolation. This is not scheduled production backup coverage.
 
-Browser workflow tests generate a private `E2E_WORKFLOW_SEED` in the Playwright process and pass it
+Browser workflow and inventory tests generate a private `E2E_WORKFLOW_SEED` in the Playwright process and pass it
 only to the disposable API launcher. It seeds synthetic manager/member memberships through the
 launcher-owned database. This is not a production account setup or an HTTP administration endpoint;
 do not put this variable in public/frontend configuration or deploy the test launcher.
 
-See [the Phase 4 report](product-phase-4-report.md) for current tested versions and counts, and
+See [the Phase 7 report](product-phase-7-report.md) for current tested versions and counts, and
 [data-model-v1.md](data-model-v1.md) for ownership, immutable snapshots, duplicate preservation,
 deletion rules, and unresolved references. Follow [backup/restore](backup-restore.md) for operational
 credential separation and restoration checks.

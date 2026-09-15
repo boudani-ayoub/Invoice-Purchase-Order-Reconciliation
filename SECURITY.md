@@ -79,6 +79,13 @@ row locking prevents concurrent removal of the last active administrator. The me
 does not render event metadata or workflow comment/resolution bodies. See
 [governance threats](docs/threat-model-governance.md).
 
+Inventory is denied to MEMBER, read-only for AP_MANAGER, and mutable only for ORG_ADMIN. The
+`/inventory` guard and navigation are usability controls; FastAPI rechecks the live permission.
+Write bodies cannot supply organization, actor, signed deltas, or request IDs. Quantities must be
+positive exact decimal strings, and ambiguous browser failures retain one idempotency key for an
+explicit retry. Imported procurement evidence never changes on-hand. See
+[inventory threats](docs/threat-model-inventory.md) and [ledger semantics](docs/inventory-ledger.md).
+
 - `NEXT_PUBLIC_API_BASE_URL` is intentionally browser-visible configuration and accepts only an
   HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
 - `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` is public build configuration. It defaults to 120 seconds
@@ -126,6 +133,14 @@ rejecting UPDATE/DELETE. No business DELETE/TRUNCATE is granted. The identity ro
 workflow history access; governance events stay in its separate identity domain. A database
 owner/superuser can change schema or disable protections; the audit
 trail is not cryptographic non-repudiation or protection from a compromised database administrator.
+
+Inventory operations and movements form a separate append-only tenant ledger. Current on-hand is
+the database sum of movement deltas; no client or item row supplies it. Every writer locks the item
+and affected locations in deterministic order before validating negative stock, so transfers are
+atomic and concurrent issues cannot oversell. Runtime has no ledger UPDATE/DELETE, immutable
+triggers reject both, and database validation checks movement signs, transfer pairs, and reversal
+inverses. Item/location mutations are column-scoped and versioned. The identity role has no
+inventory access. A schema owner or superuser can still bypass or disable these controls.
 
 Finding workflow uses separate `finding_events`, with forced RLS, same-tenant finding/actor FKs,
 SELECT/INSERT-only runtime grants and privileged-row-mutation protection. Comments/resolution text
@@ -182,7 +197,7 @@ migrations use a separate role. `DATABASE_URL` stays private and configuration e
 its value. `reconcile_identity` uses role-specific policies on identity/authentication records. It
 can update only organization name/version and membership role/status/version, manage invitation
 lifecycle columns, and select/insert append-only governance events; it cannot access procurement
-tables. Runtime cannot read credentials/sessions or access invitations/governance events. Both
+or inventory tables. Runtime cannot read credentials/sessions or access invitations/governance events. Both
 roles are checked at startup.
 Financial fields use finite NUMERIC/Decimal constraints. Duplicates and unresolved
 references are retained as evidence; discrepancies are not rejected by agreement constraints.

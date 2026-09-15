@@ -14,6 +14,12 @@ Apply migration 0006 as the migration owner and verify that runtime still has no
 governance-event, or membership-update privileges. Test invitation delivery through the configured
 SMTP provider; a committed invitation whose mail fails must be revoked and reissued. There is no
 durable mail queue. See the [governance threat review](threat-model-governance.md).
+Phase 7 adds the append-only inventory ledger. Apply migration 0007 as the migration owner and
+verify that runtime has no UPDATE/DELETE on operations or movements and identity has no inventory
+access. Inventory writes serialize on item and affected location locks; monitor transaction time,
+lock waits, ledger growth, and balance-query cost. A timed-out client may retry only with the same
+idempotency key. Procurement imports never post stock. See the
+[inventory ledger](inventory-ledger.md) and [inventory threat review](threat-model-inventory.md).
 Raw analysis files remain request-scoped; validated
 records, reports, metadata, and audit evidence are retained in PostgreSQL. This is
 not approval for a public financial service: network resource limits, operational recovery,
@@ -152,7 +158,8 @@ do not add broad host wildcards or `unsafe-eval` to make a broken production pol
 - Do not log multipart bodies, CSV rows, response reports, filenames, query strings, request
   headers, invitation URLs, or token-bearing URL fragments.
 - Do not log workflow comments, resolution notes, invitation tokens, or member display text.
-  Include findings and append-only run/workflow/governance events in encrypted backups and
+  Do not log inventory notes, external references, idempotency keys, or movement request bodies.
+  Include findings and append-only run/workflow/governance/inventory events in encrypted backups and
   restoration verification. Archive and membership deactivation do not erase this content. Bound
   authenticated mutation rates and storage growth at the deployment layer.
 - Restrict log access and retention as financial metadata may still be inferable from timing and

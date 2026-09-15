@@ -2,8 +2,32 @@
 
 This document records the Phase 1 schema decisions; the original baseline sections below are
 historical. Phase 2 added identity; Phase 3 activates persistent runs; Phase 4 adds workflow;
-Phase 5 adds a supporting activity index; and Phase 6 adds the identity-domain governance records
-described below. CLI and explicit stateless APIs remain database-free for business results.
+Phase 5 adds a supporting activity index; Phase 6 adds identity-domain governance; and Phase 7
+adds the inventory ledger described below. CLI and explicit stateless APIs remain database-free
+for reconciliation results.
+
+## Product Phase 7 extension
+
+`0007` evolves the existing `items` table with nullable `base_uom` and positive `version` default
+1. Existing item rows receive no fabricated unit. Item code stays immutable, and a trigger makes
+the base unit immutable after the first movement.
+
+The 25th table, `inventory_locations`, is a flat organization-owned master with immutable
+organization-local code, mutable name, ACTIVE/ARCHIVED status, and optimistic version. The 26th,
+`inventory_operations`, records operation type, actor membership, business and recording times,
+request ID, organization-scoped idempotency key/fingerprint, optional bounded reference/note, and
+an optional same-tenant reversal link. The 27th, `stock_movements`, carries exact `NUMERIC` deltas
+linked by same-tenant composite foreign keys to operation, item, and location.
+
+Operations and movements are append-only. Runtime receives SELECT/INSERT but no UPDATE/DELETE, and
+triggers reject mutation even if privileges drift. Deferred operation validation enforces one-line
+ordinary operations, exact two-line transfers, and exact inverse reversals. Movement insertion
+also enforces active configured masters, centralized sign rules, a single opening balance, and no
+negative result. Current on-hand is a read-time sum; no mutable balance table is introduced.
+
+All three inventory tables use tenant-leading constraints/indexes and ENABLE/FORCE runtime RLS.
+The identity role receives no inventory access. Downgrade is refused after any location, operation,
+movement, base unit, or changed item version exists. See [inventory ledger semantics](inventory-ledger.md).
 
 ## Product Phase 6 extension
 
@@ -134,6 +158,13 @@ erDiagram
   users ||--o{ governance_events : acts
   organizations ||--o{ suppliers : owns
   organizations ||--o{ items : owns
+  organizations ||--o{ inventory_locations : owns
+  organizations ||--o{ inventory_operations : records
+  organization_memberships ||--o{ inventory_operations : posts
+  inventory_operations ||--o{ stock_movements : contains
+  inventory_operations o|--o| inventory_operations : reverses
+  items ||--o{ stock_movements : identifies
+  inventory_locations ||--o{ stock_movements : holds
   organizations ||--o{ source_files : imports
   source_files ||--o{ purchase_orders : contains
   purchase_orders ||--o{ purchase_order_lines : has
@@ -157,9 +188,11 @@ they contain no credentials. `organization_memberships` uniquely pairs organizat
 with a constrained MEMBER/AP_MANAGER/ORG_ADMIN role, ACTIVE/ARCHIVED state, and optimistic version.
 Phase 6 administration uses the restricted identity service, not the tenant runtime role.
 
-Suppliers and items have organization-local unique source codes and names/descriptions. They do
-not model stock. Source-file metadata records type, original filename (metadata only, never a
-path), size, SHA-256, and timestamp, without raw bytes or temporary paths.
+Suppliers and items have organization-local unique source codes and names/descriptions. An item is
+still master data rather than stock. Its derived on-hand comes only from explicit movements at
+inventory locations; imported goods receipts never populate that ledger. Source-file metadata
+records type, original filename (metadata only, never a path), size, SHA-256, and timestamp,
+without raw bytes or temporary paths.
 
 PO and invoice headers belong to source imports. A document can be reimported without destroying
 historical versions. PO numbers are unique within their source file; PO lines are unique within
@@ -191,10 +224,11 @@ deletion. There are no cascading business deletes. Archive master records; futur
 must explicitly sequence purges after actor-aware approval and retention rules exist.
 
 Each tenant table has an organization-leading index, generally its composite unique key. Additional
-indexes cover source document lookup, logical invoice duplicate lookup, run chronology, and finding
-run/status lookup. Status/role/mode, currency shape, positive line/source-row numbers, file sizes,
-SHA-256 shape, and finite quantities/prices are database constraints. No constraint requires invoice
-quantity/price/supplier/currency or receipt quantity to agree with a PO.
+indexes cover source document lookup, logical invoice duplicate lookup, run chronology, finding
+run/status lookup, inventory item/location balance scans, operation history, and operation type.
+Status/role/mode, currency shape, positive line/source-row numbers, file sizes, SHA-256 shape, and
+finite quantities/prices are database constraints. No constraint requires invoice
+quantity/price/supplier/currency or receipt quantity to agree with a PO or inventory movement.
 
 ## RLS and role boundary
 
@@ -212,15 +246,17 @@ calling it. A browser organization ID is only a selector. No HTTP handler import
 Migration/schema ownership and runtime login are separate provisioned roles. Runtime is neither
 superuser nor BYPASSRLS nor table owner. Administrator-provisioned `reconcile_runtime` is a NOLOGIN
 privilege group; a provisioned runtime login receives membership. It has SELECT/INSERT/UPDATE on
-business tables, SELECT/INSERT on snapshots, SELECT only on organizations/memberships, no users
-access, no DELETE/TRUNCATE, and no schema CREATE. Role provisioning uses a privileged local/CI
+business tables except where later phases narrow it, SELECT/INSERT on snapshots and the inventory
+ledger, column-scoped UPDATE on inventory masters, SELECT only on organizations/memberships, no
+users access, no DELETE/TRUNCATE, and no schema CREATE. Role provisioning uses a privileged local/CI
 administrator. The schema owner grants table privileges to the provisioned group. Do not deploy
 requests with the migration URL.
 
 The separate identity role performs authentication and organization governance. Phase 6 grants it
 column-level UPDATE only on organization name/version and membership role/status/version,
 SELECT/INSERT plus lifecycle-column UPDATE on invitations, and SELECT/INSERT only on governance
-events. Runtime receives none of those capabilities; identity receives no procurement-table access.
+events. Runtime receives none of those capabilities; identity receives no procurement or inventory
+table access.
 
 RLS is defense in depth, not authentication: code with arbitrary SQL under the runtime login can
 set the context. Runtime credentials must never reach a browser. Transaction-local context is
@@ -236,6 +272,7 @@ upgrade and metadata parity against real PostgreSQL, never SQLite.
 
 Future import/save services own transactions: validate CSV, resolve within the verified tenant,
 insert headers/occurrences/provenance, then commit once. Repository helpers must not commit.
-Completed snapshots are immutable; reruns create new runs. Run, workflow, and governance event
-models record actor, organization, event, resource type/ID, time, correlation ID, and bounded safe
-metadata under separate transaction and privilege boundaries.
+Completed snapshots are immutable; reruns create new runs. Run, workflow, governance, and inventory
+event models record actor, organization, time, and correlation data under their separate
+transaction and privilege boundaries. Inventory corrections append reversals; they never rewrite
+history.

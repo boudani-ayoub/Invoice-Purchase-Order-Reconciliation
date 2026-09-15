@@ -5,15 +5,14 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 6 adds organization administration: tenant-scoped member lifecycle and
-roles, expiring email invitations, invited registration, organization display-name changes, and a
-bounded audit timeline across run, workflow, and governance events. Every write rechecks current
-server-side authorization, uses optimistic versions, and records governance in the same transaction.
-Raw uploads remain temporary; saved evidence, workflow text, and audit history remain retained.
-Archive is not deletion and there is no purge engine or compliance claim. The CLI remains
-account-free and database-free. Payment approvals and inventory are not implemented. See the
-[Phase 6 report](docs/product-phase-6-report.md) and
-[governance threat review](docs/threat-model-governance.md).
+**Status:** Product Phase 7 adds an organization-scoped inventory foundation with item base units,
+flat locations, explicit append-only stock operations, exact derived on-hand balances, atomic
+transfers, reversals, negative-stock protection, and actor-bound idempotent posting. Imported goods
+receipts and reconciliation runs do not create inventory. The CLI and all four reconciliation modes
+remain independent of inventory. Phase 7 has no valuation, reservations, unit conversion, or Phase
+8 intelligence. See the [inventory ledger](docs/inventory-ledger.md),
+[Phase 7 report](docs/product-phase-7-report.md), and
+[inventory threat review](docs/threat-model-inventory.md).
 
 ## Choose a workflow
 
@@ -237,6 +236,15 @@ GET  /api/v1/admin/invitations
 POST /api/v1/admin/invitations
 POST /api/v1/admin/invitations/{invitation_id}/revoke
 GET  /api/v1/admin/audit
+GET  /api/v1/inventory/items
+POST /api/v1/inventory/items
+GET  /api/v1/inventory/locations
+POST /api/v1/inventory/locations
+GET  /api/v1/inventory/balances
+GET  /api/v1/inventory/operations
+POST /api/v1/inventory/movements
+POST /api/v1/inventory/transfers
+POST /api/v1/inventory/operations/{operation_id}/reverse
 POST /api/v1/reconcile
 POST /api/v1/analyses/invoice-po
 POST /api/v1/analyses/invoice-receipt
@@ -367,6 +375,25 @@ events. It exposes actor labels only within the active organization and does not
 comment or resolution bodies into the general timeline. See the
 [governance threat model](docs/threat-model-governance.md) for trust boundaries and residual risks.
 
+## Inventory ledger
+
+Open `/inventory` to inspect current on-hand and immutable movement history. AP_MANAGER has
+read-only access. ORG_ADMIN can configure item base units, create and archive flat locations, post
+opening balances/receipts/issues/adjustments, transfer stock atomically, and append reversals.
+MEMBER has no inventory permission or navigation entry.
+
+Item master records and imported `GoodsReceiptLine` evidence are not stock. Only explicit
+inventory operations change on-hand; saving or repeating any reconciliation analysis creates zero
+movements. The client sends positive decimal strings and the server owns signs. PostgreSQL derives
+the balance from `SUM(stock_movements.quantity_delta)` and prevents an outbound operation from
+making a location negative under concurrent writes. Each posting requires a stable idempotency UUID,
+so an explicit retry after a lost response does not duplicate inventory.
+
+Items use one configured base-unit token and Phase 7 performs no unit conversion. Archive is
+reversible but requires zero stock. Operation and movement rows cannot be updated or deleted. See
+the [ledger contract](docs/inventory-ledger.md) for signs, locking, reversal, timing, and scale
+boundaries.
+
 ## Frontend
 
 The frontend is a typed Next.js application under `frontend/`. A four-workflow hub opens dedicated
@@ -436,8 +463,8 @@ wrong-width rows, and inconsistent document fields are rejected rather than sile
 
 The `db` extra adds SQLAlchemy 2, Alembic, and psycopg 3; `auth` adds Argon2id and email validation.
 PostgreSQL is required for the authenticated web product, never for the CLI. Organizations, users,
-memberships, invitations, governance events, source metadata,
-suppliers, items, document headers/lines, analysis runs, findings, and immutable result snapshots
+memberships, invitations, governance events, source metadata, suppliers, items, inventory locations,
+inventory operations, stock movements, document headers/lines, analysis runs, findings, and immutable result snapshots
 are modeled in an isolated persistence package. Duplicate invoice occurrences and unresolved
 source references remain persistable.
 
@@ -460,6 +487,9 @@ tokens are stored. See [authentication architecture](docs/authentication-archite
 - Duplicate groups have an explicit conservative capacity and exposure policy.
 - Summary totals are computed by the engine, not reconstructed by report consumers.
 - JSON and CSV schemas serialize financial values as fixed-point strings.
+- Inventory on-hand is derived only from explicit append-only movements, never procurement imports.
+- Inventory posting uses positive decimal strings, server-owned signs, ordered locks, and stable
+  idempotency keys.
 - Output paths do not overwrite silently; forced writes use staged replacement.
 - Business logic has no dependency on argument parsing or filesystem output.
 
@@ -529,7 +559,9 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Known limits
 
-- No MFA, SSO, platform administration, permanent member deletion, payment approval, or inventory.
+- No MFA, SSO, platform administration, permanent member deletion, or payment approval.
+- Inventory has no valuation, reservations, available-to-promise, unit conversion, lots, serials,
+  warehouse hierarchy, reorder logic, forecasting, or automatic goods-receipt posting.
 - Archive is not deletion; no permanent-purge or retention engine is implemented.
 - Production SMTP must be configured and verified; no durable mail queue or auth-state purge job.
 - The API is a local/development MVP, not a public production financial service.
@@ -543,7 +575,7 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next product phase
 
-Product Phase 7 — inventory foundation and explicit stock movements. It is not implemented here.
+Product Phase 8 — supplier, procurement, and inventory intelligence. It is not implemented here.
 The complete sequence through
 authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
 
@@ -560,7 +592,8 @@ The implementation decisions and verification evidence are preserved in
 [`Product Phase 3`](docs/product-phase-3-report.md), and
 [`Product Phase 4`](docs/product-phase-4-report.md),
 [`Product Phase 5`](docs/product-phase-5-report.md), and
-[`Product Phase 6`](docs/product-phase-6-report.md).
+[`Product Phase 6`](docs/product-phase-6-report.md), and
+[`Product Phase 7`](docs/product-phase-7-report.md).
 
 ## License
 
