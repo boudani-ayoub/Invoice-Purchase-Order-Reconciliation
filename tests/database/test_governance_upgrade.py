@@ -14,7 +14,7 @@ from scripts.postgres_testing import provision_database
 pytestmark = pytest.mark.database
 
 
-def test_phase_five_upgrade_preserves_identity_and_membership_state(monkeypatch):
+def test_phase_five_upgrade_preserves_identity_and_membership_state(database, monkeypatch):
     with provision_database(os.environ["TEST_DATABASE_ADMIN_URL"], revision="0005") as previous:
         organization, user, membership = uuid4(), uuid4(), uuid4()
         with previous.admin.begin() as connection:
