@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 process.env.E2E_WORKFLOW_SEED ??= JSON.stringify({
   manager_email: `manager-${randomUUID()}@example.com`,
@@ -7,6 +7,13 @@ process.env.E2E_WORKFLOW_SEED ??= JSON.stringify({
   password: `workflow-test-${randomUUID()}`,
   organization_name: `Workflow team ${randomUUID()}`,
   member_name: '<img src=x onerror="window.workflowXss=true">',
+  governance_admin_email: `governance-admin-${randomUUID()}@example.com`,
+  governance_member_email: `governance-member-${randomUUID()}@example.com`,
+  governance_peer_email: `governance-peer-${randomUUID()}@example.com`,
+  governance_invited_email: `governance-invited-${randomUUID()}@example.com`,
+  governance_invitation_token: randomBytes(32).toString("base64url"),
+  governance_organization_name: `Governance team ${randomUUID()}`,
+  governance_member_name: '<img src=x onerror="window.governanceXss=true">',
 });
 
 import {
@@ -55,7 +62,7 @@ export default defineConfig({
         RECONCILE_ALLOWED_ORIGINS: E2E_WEB_ORIGIN,
       },
       url: `${E2E_API_ORIGIN}/health`,
-      reuseExistingServer: false,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {

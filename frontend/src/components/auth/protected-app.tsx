@@ -11,6 +11,7 @@ import { AUTH_ROUTES } from "@/constants/auth";
 import { HISTORY_PATH } from "@/constants/runs";
 import { WORK_PATH } from "@/constants/workflow";
 import { canViewDashboard, DASHBOARD_PATH } from "@/constants/dashboard";
+import { ADMIN_PATH, canViewAdmin } from "@/constants/admin";
 
 export function ProtectedApp({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
@@ -94,6 +95,14 @@ export function ProtectedApp({ children }: { children: React.ReactNode }) {
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Dashboard
+            </Link>
+          )}
+          {canViewAdmin(active?.role) && (
+            <Link
+              href={ADMIN_PATH}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Admin
             </Link>
           )}
           <div className="flex min-w-0 flex-wrap items-center gap-4">
