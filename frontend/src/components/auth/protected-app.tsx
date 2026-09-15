@@ -12,6 +12,7 @@ import { HISTORY_PATH } from "@/constants/runs";
 import { WORK_PATH } from "@/constants/workflow";
 import { canViewDashboard, DASHBOARD_PATH } from "@/constants/dashboard";
 import { ADMIN_PATH, canViewAdmin } from "@/constants/admin";
+import { canViewInventory, INVENTORY_PATH } from "@/constants/inventory";
 
 export function ProtectedApp({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
@@ -95,6 +96,14 @@ export function ProtectedApp({ children }: { children: React.ReactNode }) {
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Dashboard
+            </Link>
+          )}
+          {canViewInventory(active?.role) && (
+            <Link
+              href={INVENTORY_PATH}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Inventory
             </Link>
           )}
           {canViewAdmin(active?.role) && (
