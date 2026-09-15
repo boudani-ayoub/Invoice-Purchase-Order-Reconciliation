@@ -1,9 +1,35 @@
 # Data model v1
 
 This document records the Phase 1 schema decisions; the original baseline sections below are
-historical. Phase 2 added identity; Phase 3 activates persistent runs and the additive migration
-described below. Phase 4 adds the workflow overlay described next. CLI and explicit stateless APIs
-remain database-free for business results.
+historical. Phase 2 added identity; Phase 3 activates persistent runs; Phase 4 adds workflow;
+Phase 5 adds a supporting activity index; and Phase 6 adds the identity-domain governance records
+described below. CLI and explicit stateless APIs remain database-free for business results.
+
+## Product Phase 6 extension
+
+`0006` adds positive optimistic `version` columns, defaulting to 1, to `organizations` and
+`organization_memberships`. Memberships retain ACTIVE/ARCHIVED state and MEMBER/AP_MANAGER/ORG_ADMIN
+roles; no membership is hard-deleted. All member mutations lock the organization as a shared
+serialization point before checking versions and the last-active-admin invariant.
+
+The 23rd table, `organization_invitations`, belongs to the identity security domain. It stores the
+organization, normalized email, intended role, SHA-256 token hash, creator, lifecycle timestamps,
+PENDING/ACCEPTED/REVOKED state, optional accepting user, and positive version. Its constraints bind
+creator/acceptor membership to the organization, enforce a 32-byte token hash and coherent state,
+and permit only one pending invitation for an organization/email pair. History is retained.
+
+The 24th table, `governance_events`, is an append-only organization activity source for rename,
+member role/status, and invitation lifecycle events. Same-organization actor membership FKs,
+bounded JSON metadata, SELECT/INSERT-only identity grants, and a trigger rejecting UPDATE/DELETE
+protect it. Mutation and event share one identity transaction. The general admin timeline performs
+a bounded keyset merge of this table with existing `audit_events` and `finding_events`; it does not
+copy workflow comment or resolution bodies.
+
+Both new tables use ENABLE/FORCE RLS policies restricted to `reconcile_identity`. That role gains
+only column-level organization-name/version and membership-role/status/version updates plus the
+narrow invitation/event grants. `reconcile_runtime` has no access to either new table and cannot
+promote memberships. Downgrade is refused once governance history, invitations, or version changes
+exist so an operator cannot silently erase Phase 6 state.
 
 ## Product Phase 5 extension
 
@@ -102,6 +128,10 @@ All IDs default to PostgreSQL-generated opaque UUIDs. Mutable records carry UTC-
 erDiagram
   organizations ||--o{ organization_memberships : has
   users ||--o{ organization_memberships : joins
+  organizations ||--o{ organization_invitations : issues
+  users ||--o{ organization_invitations : creates_or_accepts
+  organizations ||--o{ governance_events : records
+  users ||--o{ governance_events : acts
   organizations ||--o{ suppliers : owns
   organizations ||--o{ items : owns
   organizations ||--o{ source_files : imports
@@ -120,11 +150,12 @@ erDiagram
   analysis_runs ||--o| result_snapshots : records
 ```
 
-`organizations` have unique normalized slugs, a name, and active/archived status. `users` are
+`organizations` have unique normalized slugs, a mutable display name, active/archived status, and
+an optimistic version. `users` are
 global identity records with normalized unique email, display name, and active/archived status;
 they contain no credentials. `organization_memberships` uniquely pairs organization and user,
-with a constrained MEMBER/AP_MANAGER/ORG_ADMIN role. Identity provisioning is reserved for a
-future privileged authenticated service, not the tenant runtime role.
+with a constrained MEMBER/AP_MANAGER/ORG_ADMIN role, ACTIVE/ARCHIVED state, and optimistic version.
+Phase 6 administration uses the restricted identity service, not the tenant runtime role.
 
 Suppliers and items have organization-local unique source codes and names/descriptions. They do
 not model stock. Source-file metadata records type, original filename (metadata only, never a
@@ -170,12 +201,12 @@ quantity/price/supplier/currency or receipt quantity to agree with a PO.
 Tenant tables ENABLE and FORCE row-level security with both USING and WITH CHECK predicates on
 `organization_id = NULLIF(current_setting('app.current_organization_id', true), '')::uuid`.
 Organizations use their own `id`. Missing/reset context yields no readable/updatable rows and
-rejects inserts. Invalid UUID context fails rather than granting access. Users have RLS enabled
-with no tenant policy or runtime grant; future identity access must be designed separately.
+rejects inserts. Invalid UUID context fails rather than granting access. Identity tables use
+separate forced policies restricted to `reconcile_identity`; the runtime has no users access.
 
 `tenant_session` owns one explicit transaction and sets context through bound `set_config(...,
 true)`. It accepts a UUID representing an already verified organization; it does not authenticate
-membership. Product Phase 2 must verify identity, active membership, and permission **before**
+membership. The authorization layer verifies identity, active membership, and permission **before**
 calling it. A browser organization ID is only a selector. No HTTP handler imports persistence.
 
 Migration/schema ownership and runtime login are separate provisioned roles. Runtime is neither
@@ -185,6 +216,11 @@ business tables, SELECT/INSERT on snapshots, SELECT only on organizations/member
 access, no DELETE/TRUNCATE, and no schema CREATE. Role provisioning uses a privileged local/CI
 administrator. The schema owner grants table privileges to the provisioned group. Do not deploy
 requests with the migration URL.
+
+The separate identity role performs authentication and organization governance. Phase 6 grants it
+column-level UPDATE only on organization name/version and membership role/status/version,
+SELECT/INSERT plus lifecycle-column UPDATE on invitations, and SELECT/INSERT only on governance
+events. Runtime receives none of those capabilities; identity receives no procurement-table access.
 
 RLS is defense in depth, not authentication: code with arbitrary SQL under the runtime login can
 set the context. Runtime credentials must never reach a browser. Transaction-local context is
@@ -200,6 +236,6 @@ upgrade and metadata parity against real PostgreSQL, never SQLite.
 
 Future import/save services own transactions: validate CSV, resolve within the verified tenant,
 insert headers/occurrences/provenance, then commit once. Repository helpers must not commit.
-Completed snapshots are immutable; reruns create new runs. The future audit model records actor,
-organization, event, resource type/ID, time, correlation ID, and bounded safe metadata. Actor-aware
-audit writes and persistent HTTP access wait for Product Phase 2/3.
+Completed snapshots are immutable; reruns create new runs. Run, workflow, and governance event
+models record actor, organization, event, resource type/ID, time, correlation ID, and bounded safe
+metadata under separate transaction and privilege boundaries.

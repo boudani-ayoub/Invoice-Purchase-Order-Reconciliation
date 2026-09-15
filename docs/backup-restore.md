@@ -4,7 +4,7 @@
 
 Persistent runs make PostgreSQL business data, not just identity state, a recovery concern.
 Backups contain source records, financial reports, safe filenames/hashes, titles/notes, audit
-actors, account data and credential/session hashes. Raw uploaded CSV files are not retained by
+actors, account data, invitation/governance history, and credential/session/token hashes. Raw uploaded CSV files are not retained by
 the application, so a database backup cannot recover their original bytes.
 
 This is an operator checklist, not an installed backup service. An operations owner must approve
@@ -62,14 +62,17 @@ around the runtime/identity contract. See the official
 
 4. Check migration revision before starting the matching application. Run `alembic check`; if a
    later application needs upgrades, snapshot the restored target and migrate as its owner first.
-5. Verify source/run/snapshot/audit row counts, representative report JSON and hashes, same-tenant
-   actor links, and login/session behavior. Use a restricted synthetic account for browser checks.
-6. Check all 21 tables retain ENABLE/FORCE RLS, snapshot/audit triggers and checks are present,
-   runtime cannot DELETE/TRUNCATE or rewrite evidence/audit, and identity cannot read procurement.
+5. Verify source/run/snapshot/audit/governance row counts, representative report JSON and hashes,
+   same-tenant actor links, invitation lifecycle, and login/session behavior. Use a restricted
+   synthetic account for browser checks.
+6. Check all 24 tables retain ENABLE/FORCE RLS, snapshot/audit/governance triggers and checks are present,
+   runtime cannot DELETE/TRUNCATE, rewrite evidence/audit, or access invitations/governance events,
+   and identity cannot read procurement.
    Reads without tenant context must return no tenant history; cross-tenant GET/PATCH/archive
    must return `404`. Confirm owner credentials are absent from HTTP startup.
 7. Verify session/recovery-token invalidation policy with the incident owner. Restoring old auth
-   state can restore previously valid credentials/tokens; do not expose that state blindly.
+   state can restore previously valid credentials, sessions, or unexpired invitation tokens; do
+   not expose that state blindly. Revoke/reissue sensitive invitations after an incident restore.
 8. Run `ANALYZE`, application smoke tests and reconciliation sample checks. Record elapsed time,
    errors, measured data-loss window and reviewer. Rehearse controlled cutover/rollback separately;
    a successful test restore does not authorize production replacement.
@@ -85,8 +88,8 @@ off-host transport, key recovery, large-data recovery time, or a production rest
 
 ## Retention and deletion
 
-Archive/restore is a product visibility change, not deletion. It retains canonical source evidence,
-snapshots, findings, notes and audit events. There is no permanent-purge endpoint, retention job,
+Archive/restore and membership deactivation are visibility/access changes, not deletion. They retain
+canonical source evidence, snapshots, findings, notes, invitations, and all event history. There is no permanent-purge endpoint, retention job,
 or legal-hold workflow. Define those policies, including expired backup copies, before promising
 data erasure. Keep test archives/logs out of Git. Dispose of approved expired copies using the
 storage platform's reviewed recovery/retention policy, not broad filesystem deletion commands.

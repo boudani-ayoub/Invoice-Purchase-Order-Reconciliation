@@ -2,7 +2,10 @@
 
 This is the Phase 2 assessment. The [Phase 3 persistence threat model](threat-model-persistence.md)
 adds saved-data/resource threats and documents the pre-body upload gate, expanded permissions,
-and actor-aware audit. Historical Phase 2 exclusions below are not the current feature list.
+and actor-aware audit. Product Phase 6 adds secure organization invitations and current-membership
+administration; its risks and evidence are in the
+[governance threat model](threat-model-governance.md). Historical Phase 2 exclusions below are not
+the current feature list.
 
 Scope: Product Phase 2, first-party email/password accounts, organization memberships, opaque
 sessions, four stateless analyses and the legacy analysis route. No payment execution or saved
@@ -34,11 +37,11 @@ registration/login and browser cookies, not an authentication mock.
 | CSRF, including login CSRF | Account/workflow actions; cross-origin forms/fetch | HMAC proof bound to random HttpOnly context cookie and current session; explicit trusted Origin on every POST; Strict cookies | XSS in a trusted origin can get valid proofs; allow-list compromise is significant | All eight auth mutations, all five analysis routes, stale proof, origin/key/cookie/session binding tests |
 | XSS / token theft | Account and temporary report; browser rendering | React text rendering, no injected HTML, no remote scripts/analytics, HttpOnly sessions, fragment cleanup, focused CSP | Current CSP is not a full script/style policy; malicious extensions and same-origin script compromise remain | Existing rendering tests, auth transport tests, narrow/axe browser checks; static source review |
 | Cross-tenant IDOR | Tenant records; API selectors | Server principal → fresh membership → centralized permission → verified UUID → tenant RLS; no business CRUD routes yet | Future resource routes must repeat authorization; process-level arbitrary SQL can choose tenant context | Two real accounts reject each other's org; original A/B RLS read/write tests |
-| Organization-ID tampering | Active tenant; select-organization body/header | UUID is only a selector; active membership required; session composite FK; token rotation preserves absolute deadline | Authorized membership in several orgs still needs careful UX; no admin changes implemented | Foreign-key rejection, valid switch and cross-org negative tests |
+| Organization-ID tampering | Active tenant; select-organization body/header | UUID is only a selector; active membership required; session composite FK; token rotation preserves absolute deadline | Authorized membership in several orgs still needs careful UX; governance must preserve server-derived scope | Foreign-key rejection, valid switch and cross-org admin negative tests |
 | Stale membership | Tenant access; an existing session | Recheck user, organization, membership and role every protected request; tenant transaction rechecks membership | A concurrent revocation can race a request already authorized; no retroactive cancellation | User/org/membership archive tests; live role-change test |
-| Privilege escalation | Tenant permissions; browser role or stored stale role | Only RUN_ANALYSIS exists; centralized immutable role map; current DB role, never role claims from browser | Full identity/tenant credential compromise exceeds this boundary; future privileges need new tests | All existing roles allowed; live role and no-membership tests; dependency review |
+| Privilege escalation | Tenant permissions; browser role or stored stale role | Explicit immutable permission sets; admin permissions exist only in ORG_ADMIN; current membership rechecked by governance | Full identity credential compromise exceeds this boundary; every future permission needs denial tests | AP_MANAGER regression for every admin permission; live role downgrade and no-membership tests |
 | CORS misconfiguration | Credentialed responses; hostile website | Explicit credentialed GET/POST allow-list; no wildcard/userinfo/path origins; production HTTPS validation | Same-site sibling compromise matters; proxy configuration may drift; CORS alone is not authorization | Trusted/untrusted preflight tests, wildcard/config rejection, Origin rejection |
-| DB-role compromise | Identity or procurement state; leaked service URL | Separate roles, startup checks, no owner/super/BYPASSRLS, no role/schema creation; identity denied procurement; tenant denied credentials | Identity login can take over accounts and insert memberships by design; arbitrary tenant SQL can set context; DB admin controls DDL | Role flag/grant tests and direct denied SELECT/UPDATE; every table forced RLS |
+| DB-role compromise | Identity or procurement state; leaked service URL | Separate roles, startup checks, no owner/super/BYPASSRLS, no role/schema creation; identity denied procurement; tenant denied credentials/invitations/governance | Identity login can manage accounts and membership roles by design; arbitrary tenant SQL can set context; DB admin controls DDL | Role flag/grant tests, direct denied SELECT/UPDATE, all 24 tables forced RLS |
 | Email reset-token theft | Account recovery; mailbox/link/endpoint | 256-bit opaque tokens, short reset TTL, hash-only DB storage, fragments avoid request URLs, no-referrer API policy, no third-party browser code | Email compromise still allows takeover; links can be forwarded or captured on-device; browser memory is not secret from XSS | Hash-only token, random-token denial, fragment removal, no-secret logging tests |
 | Reset / verification replay | Password/email identity; consume POST | Lock user then token, single-use/expiry checks, transaction invalidates outstanding same-purpose tokens; reset revokes sessions atomically | Delayed SMTP messages can contain replaced links; resend may be needed | Valid/reused/replaced/expired token cases; concurrent reset only succeeds once |
 | SMTP secret leakage | Mail service/account links; configuration/provider failure | Hidden repr, TLS with certificate validation, no raw message or exception logging, generic public response | Provider logging and operational secret stores are outside app tests; durable queue not implemented | Both SMTP transports mocked for TLS assertions; secret-bearing delivery failure test |
@@ -54,12 +57,12 @@ registration/login and browser cookies, not an authentication mock.
 - Expired auth state needs a privileged retention policy. The HTTP roles intentionally cannot
   DELETE. No purge job or durable mail retry queue is included in this phase.
 - Session revocation takes effect at authorization checks; it does not undo a completed request.
-  Full account administration, MFA, SSO, breached-password checks, actor-aware business auditing,
-  persistent reports, recovery objectives and a complete deployment CSP remain future work.
+  Platform account administration, MFA, SSO, breached-password checks, recovery objectives and a
+  complete deployment CSP remain future work.
 - Browser tests and manual review use synthetic data in disposable databases. Real SMTP delivery,
   production TLS/proxy behavior, adversarial load testing, and formal penetration testing are not
   claimed as executed.
 
 The implementation follows the password-storage and CSRF references linked in
-[authentication architecture](authentication-architecture.md). Reassess this model when Phase 3
-introduces saved data and resource identifiers rather than assuming current tests cover new routes.
+[authentication architecture](authentication-architecture.md). Reassess both this historical model
+and the governance model whenever identity routes, permissions, or database grants change.

@@ -43,7 +43,7 @@ alembic upgrade head
 alembic check
 ```
 
-The migrations install 22 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
+The migrations install 24 tables, checks, foreign keys, indexes, RLS policies, timestamp triggers,
 snapshot protection, and runtime grants. No manual table/policy setup is needed. Role provisioning
 is deliberately separate from migrations: application migrations should not require CREATEROLE.
 The source distribution contains Alembic assets; the core wheel remains lightweight and DB-free.
@@ -74,13 +74,23 @@ tested. Standard index creation can block writes: plan maintenance and deploymen
 timeouts. Downgrading 0005 drops only its index; 0004's no-history-erasure boundary remains.
 See [dashboard query evidence](dashboard-metrics.md#query-design-and-cost).
 
+`0006` adds optimistic versions to organizations and memberships, plus identity-domain
+`organization_invitations` and append-only `governance_events`. It gives `reconcile_identity`
+only the organization-name, membership-role/status, invitation-lifecycle, and event privileges
+required by the governance service. Both new tables use forced identity RLS;
+`reconcile_runtime` has no access. Clean and `0005`→head upgrades preserve all earlier identity,
+source, run, snapshot, audit, finding, and workflow rows and grants. Downgrade proceeds only while
+both new tables are empty and all new versions remain 1; otherwise it raises instead of destroying
+governance history. Back up and rehearse upgrade/restore before applying it outside a disposable
+database.
+
 After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identity login in
 `IDENTITY_DATABASE_URL`, never the schema-owner URL. Do not reuse the migration process environment.
 `tenant_session(engine, verified_organization_uuid)` starts a transaction, binds transaction-local
-context, commits success and rolls back failure. It does **not** verify membership. Phase 2 checks
+context, commits success and rolls back failure. It does **not** verify membership. Authorization checks
 session, active user, active membership, and permission before entering this helper, then rechecks
 membership and organization under tenant RLS. Identity policies apply only to the identity group;
-all 22 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
+all 24 tables keep ENABLE/FORCE RLS. No SECURITY DEFINER escape hatch is added.
 
 ## Integration tests
 

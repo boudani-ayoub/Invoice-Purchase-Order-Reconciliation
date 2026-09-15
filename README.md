@@ -5,16 +5,15 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 5 adds a manager-only dashboard for current backlog, UTC workflow
-activity, issue mix, assignee workload and unresolved age. Recent analyses retain separately
-labeled per-run summaries; no cross-run financial total is computed. Phase 4's workflow provides
-assignment, due dates, in-app reminders, investigation status, and append-only comments/history.
-Saved reports and source evidence remain immutable. History retains metadata edits and reversible
-archive with stale-write protection. Raw uploads remain temporary. The CLI remains account-free
-and database-free. Payment approvals, member administration, and inventory are not implemented.
-See the [dashboard metric contract](docs/dashboard-metrics.md),
-[Phase 5 report](docs/product-phase-5-report.md), and [dashboard threat review](docs/threat-model-dashboard.md).
-AP managers and organization administrators can open `/dashboard`; members retain Work and History.
+**Status:** Product Phase 6 adds organization administration: tenant-scoped member lifecycle and
+roles, expiring email invitations, invited registration, organization display-name changes, and a
+bounded audit timeline across run, workflow, and governance events. Every write rechecks current
+server-side authorization, uses optimistic versions, and records governance in the same transaction.
+Raw uploads remain temporary; saved evidence, workflow text, and audit history remain retained.
+Archive is not deletion and there is no purge engine or compliance claim. The CLI remains
+account-free and database-free. Payment approvals and inventory are not implemented. See the
+[Phase 6 report](docs/product-phase-6-report.md) and
+[governance threat review](docs/threat-model-governance.md).
 
 ## Choose a workflow
 
@@ -227,6 +226,17 @@ POST /api/v1/auth/forgot-password
 POST /api/v1/auth/reset-password
 POST /api/v1/auth/verify-email
 POST /api/v1/auth/resend-verification
+POST /api/v1/auth/invitations/preview
+POST /api/v1/auth/invitations/accept
+POST /api/v1/auth/register-invited
+GET  /api/v1/admin/organization
+PATCH /api/v1/admin/organization
+GET  /api/v1/admin/members
+PATCH /api/v1/admin/members/{user_id}
+GET  /api/v1/admin/invitations
+POST /api/v1/admin/invitations
+POST /api/v1/admin/invitations/{invitation_id}/revoke
+GET  /api/v1/admin/audit
 POST /api/v1/reconcile
 POST /api/v1/analyses/invoice-po
 POST /api/v1/analyses/invoice-receipt
@@ -331,6 +341,32 @@ computed on reads, not stored. Reminders are **in-app only**: no email/push deli
 notifications, worker, queue, or scheduler. Refresh the queue to check current flags.
 See [the Phase 4 report](docs/product-phase-4-report.md) and [workflow threats](docs/threat-model-workflow.md).
 
+## Organization administration
+
+Organization administrators can open `/admin`, with member/invitation management at
+`/admin/members`, display-name and data-governance information at `/admin/settings`, and the
+read-only merged activity timeline at `/admin/audit`. AP managers and members receive `403` from
+the administration API even if they navigate directly to those pages. This is organization scope,
+not platform administration.
+
+Memberships are retained records with ACTIVE/ARCHIVED state. An administrator can change MEMBER,
+AP_MANAGER, and ORG_ADMIN roles, deactivate access, or reactivate it. A locked organization row
+serializes these mutations so concurrent requests cannot remove the last active organization
+administrator. Every mutable organization, membership, and invitation record has a positive
+version; stale writes return `409` and require an explicit refresh.
+
+Invitations use 256-bit single-use tokens delivered through the existing mail service. Only a
+SHA-256 hash is stored; the link carries the token in a URL fragment, which `/invite` removes
+before preview. Existing users must sign in with the invited email. Invited registration derives
+email, organization, and role from the invitation, marks that mailbox verified, and creates no
+personal organization. Pending duplicates must be revoked before reissuing. Tokens are never
+returned by the API or copied into logs/audit metadata.
+
+The audit endpoint merges bounded keyset pages from run audit, finding workflow, and governance
+events. It exposes actor labels only within the active organization and does not copy workflow
+comment or resolution bodies into the general timeline. See the
+[governance threat model](docs/threat-model-governance.md) for trust boundaries and residual risks.
+
 ## Frontend
 
 The frontend is a typed Next.js application under `frontend/`. A four-workflow hub opens dedicated
@@ -400,7 +436,7 @@ wrong-width rows, and inconsistent document fields are rejected rather than sile
 
 The `db` extra adds SQLAlchemy 2, Alembic, and psycopg 3; `auth` adds Argon2id and email validation.
 PostgreSQL is required for the authenticated web product, never for the CLI. Organizations, users,
-memberships, source metadata,
+memberships, invitations, governance events, source metadata,
 suppliers, items, document headers/lines, analysis runs, findings, and immutable result snapshots
 are modeled in an isolated persistence package. Duplicate invoice occurrences and unresolved
 source references remain persistable.
@@ -493,7 +529,7 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Known limits
 
-- No MFA, SSO, member-management UI, AP assignment/resolution, dashboard, or inventory.
+- No MFA, SSO, platform administration, permanent member deletion, payment approval, or inventory.
 - Archive is not deletion; no permanent-purge or retention engine is implemented.
 - Production SMTP must be configured and verified; no durable mail queue or auth-state purge job.
 - The API is a local/development MVP, not a public production financial service.
@@ -507,7 +543,7 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next product phase
 
-Product Phase 5 — AP Manager Dashboard + measured KPIs. This is the next step, not implemented here.
+Product Phase 7 — inventory foundation and explicit stock movements. It is not implemented here.
 The complete sequence through
 authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
 
@@ -522,7 +558,9 @@ The implementation decisions and verification evidence are preserved in
 [`Product Phase 1`](docs/product-phase-1-report.md) and
 [`Product Phase 2`](docs/product-phase-2-report.md), and
 [`Product Phase 3`](docs/product-phase-3-report.md), and
-[`Product Phase 4`](docs/product-phase-4-report.md).
+[`Product Phase 4`](docs/product-phase-4-report.md),
+[`Product Phase 5`](docs/product-phase-5-report.md), and
+[`Product Phase 6`](docs/product-phase-6-report.md).
 
 ## License
 

@@ -9,6 +9,11 @@ Do not promise closed-app notification delivery. Phase 5 adds manager-only read 
 one event activity index, not a global financial report. Apply migration 0005 with a maintenance
 window and reviewed timeout policy; measure large-tenant aggregate and median costs before public
 use. See the [dashboard threat review](threat-model-dashboard.md).
+Phase 6 adds identity-role organization administration, email invitations, and a merged audit view.
+Apply migration 0006 as the migration owner and verify that runtime still has no invitation,
+governance-event, or membership-update privileges. Test invitation delivery through the configured
+SMTP provider; a committed invitation whose mail fails must be revoked and reissued. There is no
+durable mail queue. See the [governance threat review](threat-model-governance.md).
 Raw analysis files remain request-scoped; validated
 records, reports, metadata, and audit evidence are retained in PostgreSQL. This is
 not approval for a public financial service: network resource limits, operational recovery,
@@ -144,11 +149,12 @@ do not add broad host wildcards or `unsafe-eval` to make a broken production pol
 ## Logging and operations
 
 - Log request time, route, status, response size, and a generated correlation identifier.
-- Do not log multipart bodies, CSV rows, response reports, filenames, query strings, or request
-  headers that may contain credentials.
-- Do not log workflow comments, resolution notes, or member display text. Include findings and
-  append-only workflow events in encrypted backups and restoration verification. Archive does not
-  erase this content. Bound authenticated mutation rates/storage growth at the deployment layer.
+- Do not log multipart bodies, CSV rows, response reports, filenames, query strings, request
+  headers, invitation URLs, or token-bearing URL fragments.
+- Do not log workflow comments, resolution notes, invitation tokens, or member display text.
+  Include findings and append-only run/workflow/governance events in encrypted backups and
+  restoration verification. Archive and membership deactivation do not erase this content. Bound
+  authenticated mutation rates and storage growth at the deployment layer.
 - Restrict log access and retention as financial metadata may still be inferable from timing and
   request volume.
 - Alert on repeated `413`, `422`, `5xx`, timeouts, restarts, memory pressure, and temporary-volume
@@ -186,10 +192,11 @@ Use [the backend example](../.env.example) as a checklist, not working productio
   bootstrap gets a fresh proof. Revoke sessions separately for a session-compromise response.
 - `AUTH_REQUIRE_VERIFICATION=true`; `AUTH_MAIL_MODE=smtp`; SMTP host/sender and either SSL
   (default port 465) or STARTTLS (configure the provider's port), with certificate validation.
-  Store SMTP credentials in the platform secret manager. Send a real verification/recovery test
-  before release. Startup validates configuration, not provider delivery or DNS authentication.
-- Default 30-minute idle / 12-hour absolute sessions, 24-hour verification and 30-minute reset
-  tokens. Login allows five attempts per identifier per 15 minutes; registration, resend, and
+  Store SMTP credentials in the platform secret manager. Send real verification, recovery, and
+  invitation tests before release. Startup validates configuration, not provider delivery or DNS
+  authentication. Provider logs and bounce handling must not expose invitation links.
+- Default 30-minute idle / 12-hour absolute sessions, 24-hour verification, 30-minute reset, and
+  seven-day invitation tokens. Login allows five attempts per identifier per 15 minutes; registration, resend, and
   recovery each allow three per hour. Tune using measured resource budgets.
 - `AUTH_DOCS_ENABLED=false` by default in production; `AUTH_REGISTRATION_ENABLED=false` can close
   public registration without disabling existing accounts.
@@ -207,6 +214,8 @@ Mail-provider and browser trace artifacts need equivalent
 access/retention controls. Error-class-only application logging deliberately sacrifices detailed
 tracebacks; use sanitized operational metrics for diagnosis.
 
-Expired session/token/throttle records are not automatically purged in Phase 2. Plan bounded,
-privileged retention jobs and monitor table/index growth before public exposure; normal HTTP roles
-have no DELETE privilege. Back up account state and test recovery with dedicated operator access.
+Expired session/token/throttle/invitation records and retained governance events are not
+automatically purged. Plan bounded, privileged retention jobs and monitor table/index growth before
+public exposure; normal HTTP roles have no DELETE privilege. Back up account and governance state
+and test recovery with dedicated operator access. This project does not claim retention, legal-hold,
+secure-destruction, GDPR, or SOC 2 compliance.

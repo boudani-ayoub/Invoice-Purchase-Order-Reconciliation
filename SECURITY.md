@@ -71,6 +71,14 @@ without expanding database grants. Per-run monetary summaries are never summed i
 organization-wide exposure. See [dashboard threats](docs/threat-model-dashboard.md) and
 [metric semantics and query limits](docs/dashboard-metrics.md).
 
+Organization administration is available only to the active organization's ORG_ADMIN role.
+Frontend navigation and `/admin` guards are usability controls; FastAPI independently authorizes
+organization settings, members, invitations, and audit. Member/invitation lists use bounded keyset
+pagination. Stale versions return `409`, foreign-tenant identifiers return `404`, and organization
+row locking prevents concurrent removal of the last active administrator. The merged audit page
+does not render event metadata or workflow comment/resolution bodies. See
+[governance threats](docs/threat-model-governance.md).
+
 - `NEXT_PUBLIC_API_BASE_URL` is intentionally browser-visible configuration and accepts only an
   HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
 - `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` is public build configuration. It defaults to 120 seconds
@@ -99,8 +107,9 @@ organization-wide exposure. See [dashboard threats](docs/threat-model-dashboard.
 The CLI does not import the optional auth/database/web packages. HTTP uses separate limited
 identity and tenant database connections. Persistent create, history, metadata, archive, and restore
 use only the tenant connection after fresh authorization. Workflow business writes use the same
-boundary; member administration remains out of scope. The read-only assignee directory uses narrow
-identity projections bound to the verified active organization and never grants runtime users access.
+boundary. Phase 6 organization and membership governance uses the restricted identity connection
+after another current-membership check; it never gives the tenant runtime identity-management
+access. The assignee directory remains a narrow organization-bound identity projection.
 
 Source import, completed run, findings, immutable snapshot, and completion audit share one
 transaction. Metadata/archive/restore and their audit event also commit or roll back together.
@@ -113,8 +122,9 @@ The runtime cannot rewrite source evidence, finding identity/code/category/sourc
 Only title, note, archive timestamp, and version can be updated on runs. Finding UPDATE is restricted
 to status, assignee, due/reminder, resolution fields, and version. Audit events have SELECT/INSERT-only runtime grants,
 forced RLS, same-tenant actor/resource foreign keys, bounded non-sensitive metadata, and a trigger
-rejecting UPDATE/DELETE. No business DELETE/TRUNCATE is granted. The identity role has no history
-or audit access. A database owner/superuser can change schema or disable protections; the audit
+rejecting UPDATE/DELETE. No business DELETE/TRUNCATE is granted. The identity role has no run or
+workflow history access; governance events stay in its separate identity domain. A database
+owner/superuser can change schema or disable protections; the audit
 trail is not cryptographic non-repudiation or protection from a compromised database administrator.
 
 Finding workflow uses separate `finding_events`, with forced RLS, same-tenant finding/actor FKs,
@@ -139,8 +149,14 @@ Unknown-account login performs dummy verification; PostgreSQL-backed HMAC identi
 enforce temporary login and mail/registration limits across workers. This does not prevent all
 timing enumeration or distributed DoS. See the [auth threat model](docs/threat-model-auth.md).
 
-Sessions and mail tokens use 256 bits of randomness; only SHA-256 hashes are persisted. Sessions
-have a 30-minute idle and 12-hour absolute lifetime. Login and organization switches issue new
+Sessions, identity mail tokens, and organization invitation tokens use 256 bits of randomness;
+only SHA-256 hashes are persisted. Invitation links put the secret in a URL fragment and the
+landing page removes it before preview. Existing-account acceptance requires the authenticated
+normalized email to match. Invited registration derives email, organization, and role from the
+locked invitation, marks that email verified as proof of mailbox possession, creates no unrelated
+organization, consumes the token once, and records governance in the same transaction.
+
+Sessions have a 30-minute idle and 12-hour absolute lifetime. Login and organization switches issue new
 session/CSRF cookies. Logout revokes the server record; reset atomically changes the password,
 consumes tokens, and revokes all sessions. Production uses __Host- cookies, Secure, HttpOnly,
 SameSite=Strict, Path=/, and no Domain. Weaker local cookies require explicit development mode
@@ -163,9 +179,11 @@ organization ID is only a selector.
 The provisioned runtime role does not own tables and must not have superuser/BYPASSRLS. It has no
 users access, identity-management writes, schema creation, DELETE, or TRUNCATE privileges. Schema
 migrations use a separate role. `DATABASE_URL` stays private and configuration errors do not reveal
-its value. `reconcile_identity` uses role-specific policies on identity/authentication records;
-it may create organizations/memberships but cannot update their roles/statuses or access any
-procurement table. Runtime cannot read credentials/sessions. Both are checked at startup.
+its value. `reconcile_identity` uses role-specific policies on identity/authentication records. It
+can update only organization name/version and membership role/status/version, manage invitation
+lifecycle columns, and select/insert append-only governance events; it cannot access procurement
+tables. Runtime cannot read credentials/sessions or access invitations/governance events. Both
+roles are checked at startup.
 Financial fields use finite NUMERIC/Decimal constraints. Duplicates and unresolved
 references are retained as evidence; discrepancies are not rejected by agreement constraints.
 
@@ -194,7 +212,8 @@ reporting option under the GitHub **Security** tab when available. Otherwise, co
 repository owner through the GitHub profile to agree on a private reporting channel.
 
 A public deployment still requires operational threat review, network-level resource limits,
-tested operational backup/restore, retention, and incident response. MFA, SSO, and audit-log
-administration remain future work. This policy does not claim production readiness or compliance certification.
+tested operational backup/restore, retention, and incident response. MFA, SSO, tamper-evident audit
+export, and platform administration remain future work. This policy does not claim production
+readiness or compliance certification.
 The current reverse-proxy baseline and its remaining requirements are documented in
 [`docs/deployment.md`](docs/deployment.md).

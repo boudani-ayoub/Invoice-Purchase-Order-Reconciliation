@@ -42,7 +42,7 @@ assignee IDs from already scoped findings. It exposes no email, credentials, ses
 ## Operational requirements
 
 Treat comments/resolution notes as retained business information. Archive hides a run from active
-History but does not delete findings, events, source evidence, or backups. Include all 22 tables
+History but does not delete findings, events, source evidence, or backups. Include all current tables
 in protected logical backups. Migration 0004 deliberately refuses downgrade to avoid erasing
 workflow history; recovery requires a reviewed backup/restore plan.
 
@@ -50,8 +50,9 @@ The synthetic workflow seeder is imported only by the disposable test launcher a
 endpoint. It creates random test credentials supplied privately by Playwright, not shipped accounts.
 Never deploy the test launcher or expose `E2E_WORKFLOW_SEED` via public environment variables.
 
-This Phase 4 review is supplemented by the [Phase 5 dashboard review](threat-model-dashboard.md).
-No payment approval, legal/penalty logic, member administration, outbound
+This Phase 4 review is supplemented by the [Phase 5 dashboard review](threat-model-dashboard.md)
+and [Phase 6 governance review](threat-model-governance.md).
+No payment approval, legal/penalty logic, platform administration, outbound
 reminder delivery, queue, purge, MFA, or SSO is introduced. This review is not certification or
 production-readiness approval. See [persistence threats](threat-model-persistence.md),
 [deployment](deployment.md), and [security roadmap](security-roadmap.md).

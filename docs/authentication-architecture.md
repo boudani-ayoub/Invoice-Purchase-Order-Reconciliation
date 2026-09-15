@@ -60,14 +60,17 @@ The migration owner is used only for DDL. `reconcile_identity` is a provisioned 
 a separate non-owner, non-superuser, non-BYPASSRLS login. Role-specific policies permit identity
 operations on users, credentials, sessions, email tokens, and throttle buckets. User updates are
 column-limited to `email_verified_at`; status/email/name changes are not granted. It can read/create
-organizations and memberships for atomic registration but cannot update their roles/statuses.
-It has no procurement-table privileges. No SECURITY DEFINER functions are necessary.
+organizations and memberships for atomic registration. Phase 6 adds column-limited organization
+name/version and membership role/status/version updates, invitation lifecycle access, and
+SELECT/INSERT-only governance events. It has no procurement-table privileges. No SECURITY DEFINER
+functions are necessary.
 
 The existing `reconcile_runtime` role and forced tenant RLS remain unchanged. A verified principal
-is checked by a centralized permission map before its organization reaches `tenant_session`.
+is checked by explicit per-role permission sets before its organization reaches `tenant_session`.
 The resulting tenant transaction rechecks membership/organization state under RLS. Browser UUIDs
-are selectors, never authorization. Only RUN_ANALYSIS is needed now; all three existing roles
-have it. A sole active membership is selected at login. Multiple memberships require explicit
+are selectors, never authorization. MEMBER receives base analysis/workflow permissions,
+AP_MANAGER adds management/dashboard permissions, and only ORG_ADMIN receives organization
+governance permissions. A sole active membership is selected at login. Multiple memberships require explicit
 selection; zero memberships cannot run analysis.
 
 ```mermaid
