@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { authPost, registerAccount, TEST_PASSWORD } from "./auth-fixture";
 import { E2E_API_ORIGIN } from "./environment";
-import { AUTH_API_PATH, AUTH_TIMEOUT_MS } from "../src/constants/auth";
+import { AUTH_API_PATH } from "../src/constants/auth";
 
 const INVALID_LOGIN_MESSAGE = "Unable to sign in with these credentials.";
 
@@ -26,29 +26,16 @@ test("registration, invalid login, sign in, refresh, and logout use the real API
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("status")).toContainText("eligible");
   await page.getByRole("link", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("incorrect password");
-  const invalidLoginRequest = page.waitForRequest(
-    (request) =>
-      new URL(request.url()).pathname === `${AUTH_API_PATH}/login` &&
-      request.method() === "POST",
-    { timeout: AUTH_TIMEOUT_MS + 5_000 },
+  const invalidLoginResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${E2E_API_ORIGIN}${AUTH_API_PATH}/login` &&
+      response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  const request = await invalidLoginRequest.catch(async () => {
-    const alert = page.getByRole("main").getByRole("alert");
-    throw new Error(
-      `Invalid login POST was not sent; page=${page.url()}; alert=${
-        (await alert.textContent().catch(() => null)) ?? "none"
-      }`,
-    );
-  });
-  const response = await request.response();
-  if (!response) {
-    throw new Error(
-      `Invalid login POST failed without a response: ${request.failure()?.errorText ?? "unknown error"}`,
-    );
-  }
+  const response = await invalidLoginResponse;
   expect(response.status()).toBe(401);
   expect(await response.json()).toEqual({
     error: "invalid_credentials",
