@@ -152,6 +152,21 @@ class ResetInput(TokenInput):
     )
 
 
+class InvitedRegistrationInput(TokenInput):
+    display_name: str = Field(min_length=1, max_length=200)
+    password: str = Field(
+        min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH, repr=False
+    )
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Enter a display name.")
+        return value
+
+
 class OrganizationInput(AuthInput):
     organization_id: UUID
 
@@ -251,3 +266,28 @@ def reset_password(body: ResetInput, request: Request, response: Response) -> di
     service = runtime(request)
     service.accounts.consume_token(body.token, TokenPurpose.RESET, body.password)
     return {"message": "Password changed. Sign in with your new password."}
+
+
+@router.post("/invitations/preview", dependencies=[Depends(require_csrf)])
+def preview_invitation(body: TokenInput, request: Request) -> dict[str, object]:
+    return runtime(request).governance.preview_invitation(body.token)
+
+
+@router.post("/invitations/accept", dependencies=[Depends(require_csrf)])
+def accept_invitation(body: TokenInput, request: Request) -> dict[str, object]:
+    service = runtime(request)
+    return service.governance.accept_invitation(
+        body.token,
+        session_cookie(request, service),
+        request_id=request.state.request_id,
+    )
+
+
+@router.post("/register-invited", status_code=201, dependencies=[Depends(require_csrf)])
+def register_invited(body: InvitedRegistrationInput, request: Request) -> dict[str, str]:
+    return runtime(request).governance.register_invited(
+        body.token,
+        display_name=body.display_name,
+        password=body.password,
+        request_id=request.state.request_id,
+    )

@@ -56,6 +56,7 @@ class AuthSettings:
     session_absolute_seconds: int = 43200
     verification_seconds: int = 86400
     reset_seconds: int = 1800
+    invitation_seconds: int = 604800
     login_attempts: int = 5
     login_window_seconds: int = 900
     mail_attempts: int = 3
@@ -77,6 +78,7 @@ class AuthSettings:
             self.session_absolute_seconds,
             self.verification_seconds,
             self.reset_seconds,
+            self.invitation_seconds,
             self.login_attempts,
             self.login_window_seconds,
             self.mail_attempts,
@@ -171,6 +173,7 @@ class AuthSettings:
             session_absolute_seconds=integer("AUTH_SESSION_ABSOLUTE_SECONDS", 43200),
             verification_seconds=integer("AUTH_VERIFICATION_SECONDS", 86400),
             reset_seconds=integer("AUTH_RESET_SECONDS", 1800),
+            invitation_seconds=integer("AUTH_INVITATION_SECONDS", 604800),
             login_attempts=integer("AUTH_LOGIN_ATTEMPTS", 5),
             login_window_seconds=integer("AUTH_LOGIN_WINDOW_SECONDS", 900),
             mail_attempts=integer("AUTH_MAIL_ATTEMPTS", 3),

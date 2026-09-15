@@ -86,15 +86,18 @@ def currency() -> CheckConstraint:
 
 class Organization(Record, Base):
     __tablename__ = "organizations"
+    __mapper_args__ = {"eager_defaults": False}
     __table_args__ = (
         CheckConstraint("name = btrim(name) AND name <> ''", name="name_nonempty"),
         CheckConstraint("slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'", name="slug_format"),
+        CheckConstraint("version > 0", name="version_positive"),
     )
     name: Mapped[str] = mapped_column(Text)
     slug: Mapped[str] = mapped_column(Text, unique=True)
     status: Mapped[RecordStatus] = mapped_column(
         enum_type(RecordStatus), server_default=RecordStatus.ACTIVE
     )
+    version: Mapped[int] = mapped_column(Integer, server_default="1", deferred=True)
 
 
 class User(Record, Base):
@@ -115,12 +118,18 @@ class User(Record, Base):
 
 class OrganizationMembership(TenantRecord, Base):
     __tablename__ = "organization_memberships"
-    __table_args__ = tenant_constraints(UniqueConstraint("organization_id", "user_id"))
+    __mapper_args__ = {"eager_defaults": False}
+    __table_args__ = tenant_constraints(
+        UniqueConstraint("organization_id", "user_id"),
+        CheckConstraint("version > 0", name="version_positive"),
+        Index("ix_organization_memberships_history", "organization_id", "created_at", "id"),
+    )
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     role: Mapped[MembershipRole] = mapped_column(enum_type(MembershipRole))
     status: Mapped[RecordStatus] = mapped_column(
         enum_type(RecordStatus), server_default=RecordStatus.ACTIVE
     )
+    version: Mapped[int] = mapped_column(Integer, server_default="1", deferred=True)
 
 
 class Supplier(TenantRecord, Base):

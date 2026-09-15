@@ -548,6 +548,9 @@ def test_identity_and_tenant_roles_are_separate(database):
             connection.execute(text("UPDATE users SET status = 'ACTIVE'"))
     with pytest.raises(DBAPIError):
         with database.identity.begin() as connection:
+            connection.execute(text("UPDATE organization_memberships SET user_id = user_id"))
+    with pytest.raises(DBAPIError):
+        with database.runtime.begin() as connection:
             connection.execute(text("UPDATE organization_memberships SET role = 'ORG_ADMIN'"))
     for table in (
         "invoices",

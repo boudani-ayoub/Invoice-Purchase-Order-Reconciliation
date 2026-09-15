@@ -6,7 +6,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect, select, text
+from sqlalchemy import inspect, text
 from test_auth import auth as auth_fixture
 from test_auth import passwords as passwords_fixture
 from test_auth import sign_in
@@ -61,29 +61,47 @@ def test_phase_four_index_upgrade_preserves_rows_schema_and_security(auth, monke
                 == 200
             )
 
+        existing_tables = set(inspect(previous.admin).get_table_names()) - {"alembic_version"}
+        columns = {table: inspect(previous.admin).get_columns(table) for table in existing_tables}
+
         def state():
             with previous.admin.connect() as connection:
                 rows = {
-                    table.name: sorted(
-                        repr(tuple(row)) for row in connection.execute(select(table))
+                    table: sorted(
+                        repr(tuple(row))
+                        for row in connection.execute(
+                            text(
+                                "SELECT "
+                                + ", ".join(
+                                    f'"{column["name"]}"' for column in columns[table]
+                                )
+                                + f' FROM "{table}"'
+                            )
+                        )
                     )
-                    for table in Base.metadata.sorted_tables
+                    for table in sorted(existing_tables)
                 }
-                policies = connection.execute(
-                    text("SELECT * FROM pg_policies ORDER BY tablename, policyname")
-                ).all()
-                grants = connection.execute(
-                    text(
-                        "SELECT * FROM information_schema.table_privileges "
-                        "WHERE table_schema = 'public' ORDER BY table_name, grantee, privilege_type"
+                policies = [
+                    row
+                    for row in connection.execute(
+                        text("SELECT * FROM pg_policies ORDER BY tablename, policyname")
                     )
-                ).all()
+                    if row.tablename in existing_tables
+                ]
+                grants = [
+                    row
+                    for row in connection.execute(
+                        text(
+                            "SELECT * FROM information_schema.table_privileges "
+                            "WHERE table_schema = 'public' "
+                            "ORDER BY table_name, grantee, privilege_type"
+                        )
+                    )
+                    if row.table_name in existing_tables
+                ]
                 return rows, policies, grants
 
         before = state()
-        columns = {
-            table: inspect(previous.admin).get_columns(table) for table in Base.metadata.tables
-        }
         monkeypatch.setenv("DATABASE_URL", previous.migration_url)
         config = Config(str(Path(__file__).parents[2] / "alembic.ini"))
         command.upgrade(config, "head")
@@ -93,7 +111,10 @@ def test_phase_four_index_upgrade_preserves_rows_schema_and_security(auth, monke
             "alembic_version"
         }
         for table, original in columns.items():
-            assert repr(inspect(previous.admin).get_columns(table)) == repr(original)
+            upgraded = inspect(previous.admin).get_columns(table)
+            if table in {"organizations", "organization_memberships"}:
+                upgraded = [column for column in upgraded if column["name"] != "version"]
+            assert repr(upgraded) == repr(original)
         assert "ix_finding_events_activity" in {
             row["name"] for row in inspect(previous.admin).get_indexes("finding_events")
         }

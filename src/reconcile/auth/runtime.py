@@ -8,6 +8,7 @@ from sqlalchemy import Engine, text
 from reconcile.auth.accounts import Accounts
 from reconcile.auth.config import IDENTITY_GROUP, AuthSettings
 from reconcile.auth.crypto import Passwords
+from reconcile.auth.governance import Governance
 from reconcile.auth.mail import DisabledMailer, Mailer, SmtpMailer
 from reconcile.auth.sessions import Sessions
 from reconcile.persistence.session import RUNTIME_GROUP, database_engine
@@ -65,10 +66,19 @@ def verify_database_role(engine: Engine, *, identity: bool) -> None:
                 "finding_events",
             )
             if identity
-            else ("users", "user_credentials", "auth_sessions", "email_tokens", "auth_throttles")
+            else (
+                "users",
+                "user_credentials",
+                "auth_sessions",
+                "email_tokens",
+                "auth_throttles",
+                "organization_invitations",
+                "governance_events",
+            )
         )
         for table in forbidden_tables:
-            if connection.scalar(
+            exists = connection.scalar(text("SELECT to_regclass(:table)"), {"table": table})
+            if exists and connection.scalar(
                 text(
                     "SELECT has_table_privilege(current_user, :table, "
                     "'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')"
@@ -93,8 +103,12 @@ class AuthRuntime:
         delivery = mailer or (
             SmtpMailer(settings) if settings.mail_mode == "smtp" else DisabledMailer()
         )
-        self.accounts = Accounts(identity, settings, passwords or Passwords(), delivery, clock)
+        password_service = passwords or Passwords()
+        self.accounts = Accounts(identity, settings, password_service, delivery, clock)
         self.sessions = Sessions(identity, tenant, settings, clock)
+        self.governance = Governance(
+            identity, self.sessions, settings, password_service, delivery, clock
+        )
 
     @classmethod
     def from_environment(cls) -> "AuthRuntime":
