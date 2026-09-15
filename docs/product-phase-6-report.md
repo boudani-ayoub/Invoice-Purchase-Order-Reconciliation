@@ -128,22 +128,24 @@ archive semantics, backups, and the absence of purge/compliance controls.
 
 ## Verification
 
-Final verification used PostgreSQL 17.11, Python 3.11.16 and 3.12.7, Node 24, Next.js 16.3.4, and
-Chromium against real FastAPI and restricted database roles. Test accounts and databases were
-synthetic and disposable; no production service or customer data was used.
+The implementation verification used PostgreSQL 17.11, Python 3.11.16 and 3.12.7, Next.js
+16.3.4, and Chromium against real FastAPI and restricted database roles. The closure rerun used
+local Node 23.8.0; GitHub Actions used the repository's Node 24 matrix. Test accounts and databases
+were synthetic and disposable; no production service or customer data was used.
 
 | Check | Result |
 | --- | --- |
-| Python 3.11 complete suite | 707 passed in 224.13s; no skips; one existing Starlette/AnyIO deprecation warning |
-| Python 3.12 complete suite | 707 passed in 224.69s; no skips; same warning |
-| Python 3.12 split check | 334 non-database + 373 database tests passed |
+| Python 3.11 closure suite | 339 passed; 368 PostgreSQL-gated tests skipped; one existing Starlette/AnyIO deprecation warning |
+| Python 3.12 closure suite | 339 passed; 368 PostgreSQL-gated tests skipped; same warning |
+| PostgreSQL 17.11 closure suite | 373 passed; same warning |
 | Focused governance and upgrade | 16 passed; includes clean/0005 upgrade, policies and grants |
 | Ruff | Lint passed; format check passed |
 | pip check | No broken requirements on Python 3.11 or 3.12 |
 | Frontend unit/component suite | 146 passed across 15 files |
 | ESLint | Passed |
 | Next production build | Passed; 21 routes generated, including all admin and invite routes |
-| Chromium complete suite | 37 passed in 1.9m with no retries |
+| Invalid-login browser stress check | 20 consecutive passes against real FastAPI and PostgreSQL |
+| Chromium complete suite | 37 passed in 2.9m with no retries |
 | axe | 33 tested-state scans; zero serious or critical violations |
 | npm audit --audit-level=high | 0 vulnerabilities |
 
@@ -161,8 +163,14 @@ and AP_MANAGER denial in both UI and all four admin GET resources.
 
 ## Review findings and residual risks
 
-- The first end-to-end failure was an ambiguous test selector because the invited email correctly
-  appeared in both member and invitation tables. The assertion now scopes to the member table.
+- The original Phase 6 browser review found an ambiguous invited-email selector because the email
+  correctly appeared in both member and invitation tables. The assertion is scoped to the member
+  table.
+- The later remote invalid-login failure was a route-transition race in the test. Registration and
+  login share Email and Password labels, so a slow client-side transition let Playwright fill the
+  outgoing registration form. The new login form then arrived empty, native required-field
+  validation prevented submit, and no login request or alert could exist. The test now waits for
+  `/login` before filling credentials, then verifies the real 401 body and the rendered alert.
 - The final formatter gate found two non-semantic line-wrap differences in the migration downgrade
   and an older upgrade test. They were formatted and recorded in a separate commit before docs.
 - Local Playwright-owned API teardown can hang on Windows. Local configuration now reuses an
@@ -192,14 +200,32 @@ secure destruction.
 | `cd457206ca59e1897377aebb8ae31fa2ccabe3b9` | Identity schema, governance service, admin/auth API, security and database tests |
 | `be3c87282d5839aac21502536bff6180d17f2407` | Administration/invitation UI, typed client, frontend tests, and real-service browser coverage |
 | `8f4e45fafe9447124ed9af89f6731f8a2f46dc11` | Apply the final Ruff formatting corrections |
+| `741b736581c8c715d42823921c87f8bd19157344` | Record the original Phase 6 report and implementation head |
+| `93fc2ef18a64c9032d2b9eb64718a9c0450cb4bf` | Skip the PostgreSQL-only governance upgrade test when its database is unavailable |
+| `baf7831cf9b172e35a3a0e3786d4fa5c99f8fc75` | Synchronize the invalid-login response assertion and expose the missing response |
+| `08f8fadb8ab6ef8e3ba45ef7d96aff7d334a3e64` | Add request-level diagnostics that proved no login POST was sent |
+| `be3712c7311bd8792503ec25a5261907fb44ff3d` | Wait for the login route before filling credentials and assert the real 401 contract |
 
-The concluding commit is `docs: record product phase 6 architecture`; its SHA is reported in the
-completion message rather than embedded self-referentially here. The final working tree should have
-no tracked changes and only the pre-existing untracked root lockfile.
+## Remote CI closure
+
+The failed runs remain part of the project history because each narrowed the defect without
+weakening product behavior or CI:
+
+| Run | Head | Result and evidence |
+| --- | --- | --- |
+| [34963224445](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34963224445) | `741b736` | Failed: PostgreSQL-only skip defect plus invalid-login browser failure |
+| [34964567497](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34964567497) | `93fc2ef` | Python and PostgreSQL green; invalid-login browser failure remained |
+| [34967959484](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/34967959484) | `baf7831` | Response synchronization timed out, proving that no response was observed |
+| [35001297122](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/35001297122) | `08f8fad` | Diagnostic proved the page reached `/login` but sent no login POST and showed no alert |
+| [35003760218](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/35003760218) | `be3712c` | Passed: Python 3.11, Python 3.12, PostgreSQL/authentication, and frontend/authenticated browser jobs |
+
+The concluding documentation commit is reported in the completion message rather than embedded
+self-referentially here. The final working tree should have no tracked changes and only the
+pre-existing untracked root lockfile.
 
 Relative to the exact implementation baseline, Phase 6 changes 50 files: 9 backend modules, 1
 migration, 5 Python test files, 20 frontend files, 1 browser-seed script, and 14 documentation or
 configuration files.
 
-No push was performed. Phase 6 is the stopping point. Phase 7 inventory foundation and explicit
+Phase 6 is implemented, pushed, and remotely verified. Phase 7 inventory foundation and explicit
 stock movements is next and was not implemented.
