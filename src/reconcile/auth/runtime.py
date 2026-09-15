@@ -11,6 +11,7 @@ from reconcile.auth.crypto import Passwords
 from reconcile.auth.governance import Governance
 from reconcile.auth.mail import DisabledMailer, Mailer, SmtpMailer
 from reconcile.auth.sessions import Sessions
+from reconcile.persistence.inventory import Inventory
 from reconcile.persistence.session import RUNTIME_GROUP, database_engine
 
 
@@ -64,6 +65,9 @@ def verify_database_role(engine: Engine, *, identity: bool) -> None:
                 "analysis_sources",
                 "audit_events",
                 "finding_events",
+                "inventory_locations",
+                "inventory_operations",
+                "stock_movements",
             )
             if identity
             else (
@@ -106,6 +110,7 @@ class AuthRuntime:
         password_service = passwords or Passwords()
         self.accounts = Accounts(identity, settings, password_service, delivery, clock)
         self.sessions = Sessions(identity, tenant, settings, clock)
+        self.inventory = Inventory(self.sessions, clock)
         self.governance = Governance(
             identity, self.sessions, settings, password_service, delivery, clock
         )

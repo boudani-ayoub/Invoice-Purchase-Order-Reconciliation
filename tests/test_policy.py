@@ -23,6 +23,7 @@ def test_role_permissions_are_explicit_and_preserve_operational_access():
         Permission.TRANSITION_ANY_FINDING,
         Permission.MANAGE_FINDING,
         Permission.VIEW_MANAGER_DASHBOARD,
+        Permission.VIEW_INVENTORY,
     }
     assert ROLE_PERMISSIONS == {
         MembershipRole.MEMBER: MEMBER_PERMISSIONS,
@@ -38,6 +39,8 @@ def test_admin_permissions_never_appear_in_operational_roles_implicitly():
         Permission.MANAGE_ORG_MEMBERS,
         Permission.MANAGE_ORG_INVITATIONS,
         Permission.VIEW_ORG_AUDIT,
+        Permission.MANAGE_INVENTORY_MASTER,
+        Permission.POST_INVENTORY,
     }
     assert administration.isdisjoint(MEMBER_PERMISSIONS)
     assert administration.isdisjoint(AP_MANAGER_PERMISSIONS)
