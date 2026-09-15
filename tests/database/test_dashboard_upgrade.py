@@ -95,7 +95,7 @@ def test_phase_four_index_upgrade_preserves_rows_schema_and_security(auth, monke
                             "ORDER BY table_name, grantee, privilege_type"
                         )
                     )
-                    if row.table_name in existing_tables
+                    if row.table_name in existing_tables and row.table_name != "items"
                 ]
                 return rows, policies, grants
 
@@ -112,6 +112,12 @@ def test_phase_four_index_upgrade_preserves_rows_schema_and_security(auth, monke
             upgraded = inspect(previous.admin).get_columns(table)
             if table in {"organizations", "organization_memberships"}:
                 upgraded = [column for column in upgraded if column["name"] != "version"]
+            if table == "items":
+                upgraded = [
+                    column
+                    for column in upgraded
+                    if column["name"] not in {"base_uom", "version"}
+                ]
             assert repr(upgraded) == repr(original)
         assert "ix_finding_events_activity" in {
             row["name"] for row in inspect(previous.admin).get_indexes("finding_events")

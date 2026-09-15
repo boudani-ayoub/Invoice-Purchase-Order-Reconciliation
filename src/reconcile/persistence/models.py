@@ -24,6 +24,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from reconcile.analysis.models import AnalysisMode, SourceType
 from reconcile.models import IssueCode
 from reconcile.persistence.base import Base, Record, TenantRecord, tenant_constraints, tenant_fk
+from reconcile.persistence.inventory_policy import (
+    BASE_UOM_LIMIT,
+    INVENTORY_CODE_LIMIT,
+    INVENTORY_NAME_LIMIT,
+    INVENTORY_NOTE_LIMIT,
+    INVENTORY_REFERENCE_LIMIT,
+)
 from reconcile.persistence.run_policy import NOTE_LIMIT, TITLE_LIMIT
 from reconcile.persistence.workflow_policy import WORKFLOW_TEXT_LIMIT
 
@@ -57,6 +64,16 @@ class FindingCategory(StrEnum):
     DUPLICATE = "DUPLICATE"
     COMMERCIAL = "COMMERCIAL"
     QUANTITY = "QUANTITY"
+
+
+class InventoryOperationType(StrEnum):
+    OPENING_BALANCE = "OPENING_BALANCE"
+    STOCK_RECEIPT = "STOCK_RECEIPT"
+    STOCK_ISSUE = "STOCK_ISSUE"
+    ADJUSTMENT_IN = "ADJUSTMENT_IN"
+    ADJUSTMENT_OUT = "ADJUSTMENT_OUT"
+    TRANSFER = "TRANSFER"
+    REVERSAL = "REVERSAL"
 
 
 def enum_type(enum: type[StrEnum]) -> Enum:
@@ -152,12 +169,124 @@ class Item(TenantRecord, Base):
     __table_args__ = tenant_constraints(
         UniqueConstraint("organization_id", "item_code"),
         CheckConstraint("item_code <> '' AND item_code = btrim(item_code)", name="code_nonempty"),
+        CheckConstraint(
+            f"base_uom IS NULL OR (length(base_uom) BETWEEN 1 AND {BASE_UOM_LIMIT} "
+            "AND base_uom ~ '^[A-Z0-9][A-Z0-9._/-]*$')",
+            name="base_uom_format",
+        ),
+        CheckConstraint("version > 0", name="version_positive"),
     )
     item_code: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
+    base_uom: Mapped[str | None] = mapped_column(Text)
     status: Mapped[RecordStatus] = mapped_column(
         enum_type(RecordStatus), server_default=RecordStatus.ACTIVE
     )
+    version: Mapped[int] = mapped_column(Integer, server_default="1", deferred=True)
+
+
+class InventoryLocation(TenantRecord, Base):
+    __tablename__ = "inventory_locations"
+    __mapper_args__ = {"eager_defaults": False}
+    __table_args__ = tenant_constraints(
+        UniqueConstraint("organization_id", "location_code"),
+        CheckConstraint(
+            f"length(location_code) BETWEEN 1 AND {INVENTORY_CODE_LIMIT} "
+            "AND location_code = btrim(location_code)",
+            name="code_nonempty",
+        ),
+        CheckConstraint(
+            f"length(name) BETWEEN 1 AND {INVENTORY_NAME_LIMIT} AND name = btrim(name)",
+            name="name_nonempty",
+        ),
+        CheckConstraint("version > 0", name="version_positive"),
+        Index("ix_inventory_locations_code", "organization_id", "location_code"),
+    )
+    location_code: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    status: Mapped[RecordStatus] = mapped_column(
+        enum_type(RecordStatus), server_default=RecordStatus.ACTIVE
+    )
+    version: Mapped[int] = mapped_column(Integer, server_default="1", deferred=True)
+
+
+class InventoryOperation(TenantRecord, Base):
+    __tablename__ = "inventory_operations"
+    __table_args__ = tenant_constraints(
+        ForeignKeyConstraint(
+            ["organization_id", "actor_user_id"],
+            ["organization_memberships.organization_id", "organization_memberships.user_id"],
+            name="fk_inventory_operations_actor_membership",
+            ondelete="RESTRICT",
+        ),
+        tenant_fk("reverses_operation_id", "inventory_operations"),
+        UniqueConstraint("organization_id", "idempotency_key"),
+        UniqueConstraint("organization_id", "reverses_operation_id"),
+        CheckConstraint("request_fingerprint ~ '^[0-9a-f]{64}$'", name="request_fingerprint_shape"),
+        CheckConstraint("occurred_at <= created_at", name="occurred_not_future"),
+        CheckConstraint(
+            f"external_reference IS NULL OR length(external_reference) <= "
+            f"{INVENTORY_REFERENCE_LIMIT}",
+            name="external_reference_length",
+        ),
+        CheckConstraint(
+            f"note IS NULL OR length(note) <= {INVENTORY_NOTE_LIMIT}", name="note_length"
+        ),
+        CheckConstraint(
+            "(operation_type = 'REVERSAL' AND reverses_operation_id IS NOT NULL) OR "
+            "(operation_type <> 'REVERSAL' AND reverses_operation_id IS NULL)",
+            name="reversal_reference",
+        ),
+        Index("ix_inventory_operations_chronology", "organization_id", "created_at", "id"),
+        Index(
+            "ix_inventory_operations_type_chronology",
+            "organization_id",
+            "operation_type",
+            "created_at",
+            "id",
+        ),
+    )
+    operation_type: Mapped[InventoryOperationType] = mapped_column(
+        enum_type(InventoryOperationType)
+    )
+    actor_user_id: Mapped[UUID]
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    external_reference: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    request_id: Mapped[UUID]
+    idempotency_key: Mapped[UUID]
+    request_fingerprint: Mapped[str] = mapped_column(Text)
+    reverses_operation_id: Mapped[UUID | None]
+
+
+class StockMovement(TenantRecord, Base):
+    __tablename__ = "stock_movements"
+    __table_args__ = tenant_constraints(
+        tenant_fk("operation_id", "inventory_operations"),
+        tenant_fk("item_id", "items"),
+        tenant_fk("location_id", "inventory_locations"),
+        CheckConstraint(
+            "quantity_delta <> 0 AND abs(quantity_delta) < 'Infinity'::numeric",
+            name="quantity_delta_nonzero",
+        ),
+        Index(
+            "ix_stock_movements_location_item",
+            "organization_id",
+            "location_id",
+            "item_id",
+        ),
+        Index(
+            "ix_stock_movements_item_location",
+            "organization_id",
+            "item_id",
+            "location_id",
+        ),
+        Index("ix_stock_movements_operation", "organization_id", "operation_id"),
+    )
+    operation_id: Mapped[UUID]
+    item_id: Mapped[UUID]
+    location_id: Mapped[UUID]
+    quantity_delta: Mapped[Decimal] = mapped_column(Numeric())
 
 
 class SourceFile(TenantRecord, Base):
