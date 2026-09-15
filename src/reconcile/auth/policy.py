@@ -20,18 +20,29 @@ class Permission(StrEnum):
     VIEW_MANAGER_DASHBOARD = "VIEW_MANAGER_DASHBOARD"
 
 
+MEMBER_PERMISSIONS = frozenset(
+    {
+        Permission.RUN_ANALYSIS,
+        Permission.VIEW_RUN_HISTORY,
+        Permission.VIEW_FINDING_WORKFLOW,
+        Permission.COMMENT_FINDING,
+        Permission.TRANSITION_ASSIGNED_FINDING,
+    }
+)
+AP_MANAGER_PERMISSIONS = frozenset(
+    {
+        *MEMBER_PERMISSIONS,
+        Permission.UPDATE_RUN_METADATA,
+        Permission.ARCHIVE_RUN,
+        Permission.TRANSITION_ANY_FINDING,
+        Permission.MANAGE_FINDING,
+        Permission.VIEW_MANAGER_DASHBOARD,
+    }
+)
 ROLE_PERMISSIONS = {
-    MembershipRole.MEMBER: frozenset(
-        {
-            Permission.RUN_ANALYSIS,
-            Permission.VIEW_RUN_HISTORY,
-            Permission.VIEW_FINDING_WORKFLOW,
-            Permission.COMMENT_FINDING,
-            Permission.TRANSITION_ASSIGNED_FINDING,
-        }
-    ),
-    MembershipRole.AP_MANAGER: frozenset(Permission),
-    MembershipRole.ORG_ADMIN: frozenset(Permission),
+    MembershipRole.MEMBER: MEMBER_PERMISSIONS,
+    MembershipRole.AP_MANAGER: AP_MANAGER_PERMISSIONS,
+    MembershipRole.ORG_ADMIN: AP_MANAGER_PERMISSIONS,
 }
 
 
