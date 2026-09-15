@@ -3,6 +3,9 @@ import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { authPost, registerAccount, TEST_PASSWORD } from "./auth-fixture";
 import { E2E_API_ORIGIN } from "./environment";
+import { AUTH_API_PATH } from "../src/constants/auth";
+
+const INVALID_LOGIN_MESSAGE = "Unable to sign in with these credentials.";
 
 test("registration, invalid login, sign in, refresh, and logout use the real API", async ({
   page,
@@ -25,9 +28,20 @@ test("registration, invalid login, sign in, refresh, and logout use the real API
   await page.getByRole("link", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("incorrect password");
+  const invalidLoginResponse = page.waitForResponse(
+    (response) =>
+      response.url() === `${E2E_API_ORIGIN}${AUTH_API_PATH}/login` &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const response = await invalidLoginResponse;
+  expect(response.status()).toBe(401);
+  expect(await response.json()).toEqual({
+    error: "invalid_credentials",
+    message: INVALID_LOGIN_MESSAGE,
+  });
   const loginError = page.getByRole("main").getByRole("alert");
-  await expect(loginError).toContainText("Unable to sign in");
+  await expect(loginError).toHaveText(INVALID_LOGIN_MESSAGE);
   await expect(loginError).toBeFocused();
   await page.getByLabel("Password", { exact: true }).fill(TEST_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
