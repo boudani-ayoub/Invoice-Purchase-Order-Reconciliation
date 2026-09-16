@@ -18,7 +18,8 @@ recommendation, background analytics system, or AI-generated insight.
 - Final Phase 7 GitHub Actions run: `35061742453`, all four jobs successful.
 - The unrelated root `package-lock.json` remains untracked and unchanged. Its SHA-256 is
   `DAA0308A5EB8C96651E80918807B4EC840C32FA960BC4308AC915136161868AE`.
-- Phase 8 is local only. No push was performed.
+- At the time these local verification results were recorded, Phase 8 had not been pushed. The
+  subsequent remote closure is recorded below.
 
 ## Architecture
 
@@ -149,8 +150,23 @@ failures or a clean Playwright process exit.
 
 - No automatic `GoodsReceipt` → stock posting exists.
 - No inventory valuation or unlike-item quantity total exists.
-- No supplier score, rating, ranking, recommendation, OTD, spend, savings, or cross-run KPI exists.
-- No AI, anomaly detection, forecasting, auto-purchasing, ERP integration, Redis, Celery, or
-  background analytics worker was added.
+- Procurement and supplier intelligence remains selected-run only. There is no organization-wide
+  procurement spend or cross-run supplier aggregation, and repeated runs are not summed.
+- No supplier score, rating, ranking, recommendation, OTD claim, spend, savings, or cross-run KPI
+  exists.
+- No AI, anomaly detection, forecasting, reordering, auto-purchasing, ERP integration, Redis,
+  Celery, or background analytics worker was added.
 - No Phase 9 functionality was implemented.
-- No push was performed.
+
+## Remote closure
+
+The locally verified Phase 8 architecture was pushed at
+`26bc8538a735de3f897df220c04b24f476bc92e4`. GitHub Actions run `35146236072` tested that exact
+head and completed successfully. All four jobs were green:
+
+- Python 3.11;
+- Python 3.12;
+- PostgreSQL and authentication integration;
+- frontend and authenticated browser verification.
+
+Phase 8 is complete and remotely verified. Phase 9 was not started by this closure update.
