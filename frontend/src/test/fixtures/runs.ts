@@ -12,6 +12,7 @@ export function savedRun(report: AnalysisReport): RunDetail {
       title: null,
       note: null,
       created_at: created,
+      completed_at: created,
       updated_at: created,
       archived_at: null,
       version: 1,

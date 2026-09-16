@@ -13,6 +13,7 @@ import { WORK_PATH } from "@/constants/workflow";
 import { canViewDashboard, DASHBOARD_PATH } from "@/constants/dashboard";
 import { ADMIN_PATH, canViewAdmin } from "@/constants/admin";
 import { canViewInventory, INVENTORY_PATH } from "@/constants/inventory";
+import { canViewInsights, INSIGHTS_PATH } from "@/constants/intelligence";
 
 export function ProtectedApp({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
@@ -104,6 +105,14 @@ export function ProtectedApp({ children }: { children: React.ReactNode }) {
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Inventory
+            </Link>
+          )}
+          {canViewInsights(active?.role) && (
+            <Link
+              href={INSIGHTS_PATH}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Insights
             </Link>
           )}
           {canViewAdmin(active?.role) && (

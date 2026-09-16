@@ -6,6 +6,7 @@ export interface RunListItem {
   status: "COMPLETED";
   title: string | null;
   created_at: string;
+  completed_at: string;
   updated_at: string;
   archived_at: string | null;
   version: number;

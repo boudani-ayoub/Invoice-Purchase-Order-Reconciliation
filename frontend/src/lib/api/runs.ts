@@ -48,6 +48,7 @@ function isRun(value: unknown): value is RunListItem {
     value.status === "COMPLETED" &&
     nullableText(value.title) &&
     typeof value.created_at === "string" &&
+    typeof value.completed_at === "string" &&
     typeof value.updated_at === "string" &&
     nullableText(value.archived_at) &&
     positiveInteger(value.version) &&
