@@ -138,14 +138,24 @@ test("manager access and member denial agree in the UI and API", async ({ page }
   const identity = await (
     await page.request.get(`${E2E_API_ORIGIN}${AUTH_API_PATH}/me`)
   ).json();
+  const personal = identity.memberships.find(
+    (candidate: { role: string }) => candidate.role === "ORG_ADMIN",
+  );
   const membership = identity.memberships.find(
     (candidate: { organization_name: string; role: string }) =>
       candidate.organization_name === seed.organization_name && candidate.role === "MEMBER",
   );
   await authPost(page.request, "select-organization", {
-    organization_id: membership.organization_id,
+    organization_id: personal.organization_id,
   });
   await page.goto("/insights");
+  await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
+  expect(
+    (await page.request.get(`${E2E_API_ORIGIN}${INTELLIGENCE_API_PATH}/inventory`)).status(),
+  ).toBe(200);
+  await page
+    .getByLabel("Organization", { exact: true })
+    .selectOption(membership.organization_id);
   await expect(page.getByRole("heading", { name: "Insights access required" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Insights", exact: true })).toHaveCount(0);
   expect(
