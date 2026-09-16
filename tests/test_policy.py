@@ -24,6 +24,7 @@ def test_role_permissions_are_explicit_and_preserve_operational_access():
         Permission.MANAGE_FINDING,
         Permission.VIEW_MANAGER_DASHBOARD,
         Permission.VIEW_INVENTORY,
+        Permission.VIEW_INTELLIGENCE,
     }
     assert ROLE_PERMISSIONS == {
         MembershipRole.MEMBER: MEMBER_PERMISSIONS,

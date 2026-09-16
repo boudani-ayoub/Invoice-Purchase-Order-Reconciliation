@@ -34,6 +34,7 @@ def run_metadata(run: AnalysisRun, summary: dict) -> dict[str, object]:
         "title": run.title,
         "note": run.note,
         "created_at": run.created_at.astimezone(UTC).isoformat(),
+        "completed_at": run.completed_at.astimezone(UTC).isoformat(),
         "updated_at": run.updated_at.astimezone(UTC).isoformat(),
         "archived_at": run.archived_at.astimezone(UTC).isoformat() if run.archived_at else None,
         "version": run.version,

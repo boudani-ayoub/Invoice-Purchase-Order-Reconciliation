@@ -8,6 +8,7 @@ FINDINGS_PATH = "/api/v1/findings"
 WORKFLOW_PATH = "/api/v1/workflow"
 DASHBOARD_PATH = "/api/v1/dashboard"
 INVENTORY_PATH = "/api/v1/inventory"
+INTELLIGENCE_PATH = "/api/v1/intelligence"
 MULTIPART_PATHS = frozenset(
     {
         "/api/v1/reconcile",
