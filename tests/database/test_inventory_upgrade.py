@@ -200,3 +200,101 @@ def test_inventory_downgrade_refuses_to_erase_item_metadata(database, monkeypatc
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
         with pytest.raises(RuntimeError, match="cannot be downgraded safely"):
             command.downgrade(alembic_config(monkeypatch, current.migration_url), "0006")
+
+
+def test_phase_seven_to_eight_index_upgrade_preserves_inventory(database, monkeypatch):
+    with provision_database(os.environ["TEST_DATABASE_ADMIN_URL"], revision="0007") as previous:
+        organization, user, item, location, operation = (uuid4() for _ in range(5))
+        with previous.admin.begin() as connection:
+            connection.execute(
+                text("INSERT INTO organizations(id, name, slug) VALUES (:id, 'Org', :slug)"),
+                {"id": organization, "slug": f"phase-eight-{uuid4().hex}"},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO users(id, email, display_name) "
+                    "VALUES (:id, :email, 'Administrator')"
+                ),
+                {"id": user, "email": f"phase-eight-{uuid4().hex}@example.com"},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO organization_memberships(organization_id, user_id, role) "
+                    "VALUES (:organization, :user, 'ORG_ADMIN')"
+                ),
+                {"organization": organization, "user": user},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO items(id, organization_id, item_code, description, base_uom) "
+                    "VALUES (:item, :organization, 'PRESERVED', 'Preserved item', 'EA')"
+                ),
+                {"item": item, "organization": organization},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO inventory_locations(id, organization_id, location_code, name) "
+                    "VALUES (:location, :organization, 'MAIN', 'Main')"
+                ),
+                {"location": location, "organization": organization},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO inventory_operations("
+                    "id, organization_id, operation_type, actor_user_id, occurred_at, "
+                    "request_id, idempotency_key, request_fingerprint) VALUES ("
+                    ":operation, :organization, 'OPENING_BALANCE', :user, now(), "
+                    ":request, :key, :fingerprint)"
+                ),
+                {
+                    "operation": operation,
+                    "organization": organization,
+                    "user": user,
+                    "request": uuid4(),
+                    "key": uuid4(),
+                    "fingerprint": "a" * 64,
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO stock_movements(organization_id, operation_id, item_id, "
+                    "location_id, quantity_delta) VALUES "
+                    "(:organization, :operation, :item, :location, 3.5)"
+                ),
+                {
+                    "organization": organization,
+                    "operation": operation,
+                    "item": item,
+                    "location": location,
+                },
+            )
+
+        def inventory_state():
+            with previous.admin.connect() as connection:
+                return tuple(
+                    connection.execute(
+                        text(
+                            "SELECT i.item_code, l.location_code, o.operation_type, "
+                            "m.quantity_delta FROM items i JOIN stock_movements m "
+                            "ON m.organization_id = i.organization_id AND m.item_id = i.id "
+                            "JOIN inventory_locations l ON l.organization_id = m.organization_id "
+                            "AND l.id = m.location_id JOIN inventory_operations o "
+                            "ON o.organization_id = m.organization_id AND o.id = m.operation_id "
+                            "WHERE i.organization_id = :organization"
+                        ),
+                        {"organization": organization},
+                    ).one()
+                )
+
+        before = inventory_state()
+        config = alembic_config(monkeypatch, previous.migration_url)
+        command.upgrade(config, "head")
+        command.check(config)
+        assert inventory_state() == before
+        assert "ix_inventory_operations_intelligence_window" in {
+            row["name"] for row in inspect(previous.admin).get_indexes("inventory_operations")
+        }
+        command.downgrade(config, "0007")
+        assert inventory_state() == before
+        command.upgrade(config, "head")
+        assert inventory_state() == before

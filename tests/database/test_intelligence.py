@@ -2,7 +2,7 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import event, func, select, update
 from sqlalchemy.orm import Session
 from test_auth import auth as auth_fixture
 from test_auth import passwords as passwords_fixture
@@ -315,3 +315,33 @@ def test_intelligence_parameters_are_bounded(auth):
         .status_code
         == 400
     )
+
+
+def test_supplier_queries_are_page_constant_and_reads_stay_bounded(auth, database):
+    sign_in(auth)
+    run = create_run(auth)
+    statements: list[str] = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(database.runtime, "before_cursor_execute", capture)
+    try:
+        counts = []
+        for limit in (1, 10):
+            statements.clear()
+            response = auth[1].get(path(run, "suppliers"), params={"limit": limit})
+            assert response.status_code == 200
+            counts.append(len(statements))
+        assert counts[0] == counts[1]
+        assert counts[0] <= 12
+
+        statements.clear()
+        assert auth[1].get(path(run, "procurement")).status_code == 200
+        assert len(statements) <= 12
+        statements.clear()
+        assert auth[1].get(f"{INTELLIGENCE_PATH}/inventory").status_code == 200
+        assert len(statements) <= 10
+    finally:
+        event.remove(database.runtime, "before_cursor_execute", capture)

@@ -239,6 +239,12 @@ class InventoryOperation(TenantRecord, Base):
         ),
         Index("ix_inventory_operations_chronology", "organization_id", "created_at", "id"),
         Index(
+            "ix_inventory_operations_intelligence_window",
+            "organization_id",
+            "occurred_at",
+            "operation_type",
+        ),
+        Index(
             "ix_inventory_operations_type_chronology",
             "organization_id",
             "operation_type",

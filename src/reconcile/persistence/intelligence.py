@@ -69,6 +69,18 @@ def snapshot_fulfillment(row: dict[str, object], mode: AnalysisMode) -> Fulfillm
     return None
 
 
+def inventory_operation_counts_query(organization: UUID, period: Period):
+    return (
+        select(db.InventoryOperation.operation_type, func.count())
+        .where(
+            db.InventoryOperation.organization_id == organization,
+            db.InventoryOperation.occurred_at >= period.start,
+            db.InventoryOperation.occurred_at < period.end,
+        )
+        .group_by(db.InventoryOperation.operation_type)
+    )
+
+
 class Intelligence:
     def __init__(self, sessions: Sessions) -> None:
         self.sessions = sessions
@@ -689,13 +701,7 @@ class Intelligence:
             )
             operation_counts = {kind.value: 0 for kind in db.InventoryOperationType}
             for operation_type, count in session.execute(
-                select(db.InventoryOperation.operation_type, func.count())
-                .where(
-                    db.InventoryOperation.organization_id == organization,
-                    db.InventoryOperation.occurred_at >= period.start,
-                    db.InventoryOperation.occurred_at < period.end,
-                )
-                .group_by(db.InventoryOperation.operation_type)
+                inventory_operation_counts_query(organization, period)
             ):
                 operation_counts[operation_type.value] = int(count)
             in_period = and_(
