@@ -114,9 +114,7 @@ def test_phase_four_index_upgrade_preserves_rows_schema_and_security(auth, monke
                 upgraded = [column for column in upgraded if column["name"] != "version"]
             if table == "items":
                 upgraded = [
-                    column
-                    for column in upgraded
-                    if column["name"] not in {"base_uom", "version"}
+                    column for column in upgraded if column["name"] not in {"base_uom", "version"}
                 ]
             assert repr(upgraded) == repr(original)
         assert "ix_finding_events_activity" in {
