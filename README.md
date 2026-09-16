@@ -5,14 +5,12 @@
 A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
 purchase-order fulfillment.
 
-**Status:** Product Phase 7 adds an organization-scoped inventory foundation with item base units,
-flat locations, explicit append-only stock operations, exact derived on-hand balances, atomic
-transfers, reversals, negative-stock protection, and actor-bound idempotent posting. Imported goods
-receipts and reconciliation runs do not create inventory. The CLI and all four reconciliation modes
-remain independent of inventory. Phase 7 has no valuation, reservations, unit conversion, or Phase
-8 intelligence. See the [inventory ledger](docs/inventory-ledger.md),
-[Phase 7 report](docs/product-phase-7-report.md), and
-[inventory threat review](docs/threat-model-inventory.md).
+**Status:** Product Phase 8 adds read-only supplier, procurement, and inventory intelligence.
+Procurement and supplier metrics describe one explicitly selected saved run; they never sum runs or
+claim organization-wide spend. Inventory metrics use only the explicit append-only stock ledger,
+with bounded 7/30/90-day activity. Imported goods receipts still do not create stock. See the
+[metric contract](docs/intelligence-metrics.md), [Phase 8 report](docs/product-phase-8-report.md),
+and [intelligence threat review](docs/threat-model-intelligence.md).
 
 ## Choose a workflow
 
@@ -245,6 +243,9 @@ GET  /api/v1/inventory/operations
 POST /api/v1/inventory/movements
 POST /api/v1/inventory/transfers
 POST /api/v1/inventory/operations/{operation_id}/reverse
+GET  /api/v1/intelligence/runs/{run_id}/procurement
+GET  /api/v1/intelligence/runs/{run_id}/suppliers
+GET  /api/v1/intelligence/inventory
 POST /api/v1/reconcile
 POST /api/v1/analyses/invoice-po
 POST /api/v1/analyses/invoice-receipt
@@ -394,6 +395,26 @@ reversible but requires zero stock. Operation and movement rows cannot be update
 the [ledger contract](docs/inventory-ledger.md) for signs, locking, reversal, timing, and scale
 boundaries.
 
+## Insights
+
+Open `/insights` as AP_MANAGER or ORG_ADMIN. Procurement and Suppliers require a completed saved
+analysis selected from active or archived history and state the boundary on screen. The view shows
+mode-aware document/line counts, original issue evidence, PO-line fulfillment where supported,
+observed receipt timing with eligible-line denominators, and exact ordered/invoiced/disputed values
+in separate currency rows. Unresolved supplier source codes remain visible instead of being dropped
+or converted into fabricated master data. MEMBER has no Insights navigation and receives `403` from
+the API.
+
+Inventory Insights is separate current-organization state. It shows active master counts, positive
+item/location position count, explicit operation types, and position-level current on-hand, period
+operation count, ledger net delta, and movement times. Periods use UTC `occurred_at` and `[start,
+end)`. It never derives stock from a procurement receipt, sums quantities across unlike items, or
+calculates valuation, demand, stockout, forecast, or reorder advice.
+
+There is no all-runs procurement endpoint, supplier score/ranking, on-time-delivery metric, payment
+or savings KPI, or currency conversion. Read [the metric contract](docs/intelligence-metrics.md)
+before consuming these endpoints.
+
 ## Frontend
 
 The frontend is a typed Next.js application under `frontend/`. A four-workflow hub opens dedicated
@@ -488,6 +509,8 @@ tokens are stored. See [authentication architecture](docs/authentication-archite
 - Summary totals are computed by the engine, not reconstructed by report consumers.
 - JSON and CSV schemas serialize financial values as fixed-point strings.
 - Inventory on-hand is derived only from explicit append-only movements, never procurement imports.
+- Procurement intelligence follows one run's immutable source set and snapshot; repeated runs are
+  independent evidence and are never summed.
 - Inventory posting uses positive decimal strings, server-owned signs, ordered locks, and stable
   idempotency keys.
 - Output paths do not overwrite silently; forced writes use staged replacement.
@@ -562,6 +585,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 - No MFA, SSO, platform administration, permanent member deletion, or payment approval.
 - Inventory has no valuation, reservations, available-to-promise, unit conversion, lots, serials,
   warehouse hierarchy, reorder logic, forecasting, or automatic goods-receipt posting.
+- Intelligence has no organization-wide procurement spend, cross-run supplier total, supplier
+  score/rating, promised-date/OTD claim, currency conversion, savings KPI, or recommendation model.
 - Archive is not deletion; no permanent-purge or retention engine is implemented.
 - Production SMTP must be configured and verified; no durable mail queue or auth-state purge job.
 - The API is a local/development MVP, not a public production financial service.
@@ -575,9 +600,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 
 ## Next product phase
 
-Product Phase 8 — supplier, procurement, and inventory intelligence. It is not implemented here.
-The complete sequence through
-authenticated deployment is recorded in [the security roadmap](docs/security-roadmap.md).
+Product Phase 9 — authenticated production deployment and final deployment threat model. The
+complete sequence is recorded in [the security roadmap](docs/security-roadmap.md).
 
 ## Project history
 
@@ -593,7 +617,8 @@ The implementation decisions and verification evidence are preserved in
 [`Product Phase 4`](docs/product-phase-4-report.md),
 [`Product Phase 5`](docs/product-phase-5-report.md), and
 [`Product Phase 6`](docs/product-phase-6-report.md), and
-[`Product Phase 7`](docs/product-phase-7-report.md).
+[`Product Phase 7`](docs/product-phase-7-report.md), and
+[`Product Phase 8`](docs/product-phase-8-report.md).
 
 ## License
 

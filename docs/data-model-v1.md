@@ -2,9 +2,24 @@
 
 This document records the Phase 1 schema decisions; the original baseline sections below are
 historical. Phase 2 added identity; Phase 3 activates persistent runs; Phase 4 adds workflow;
-Phase 5 adds a supporting activity index; Phase 6 adds identity-domain governance; and Phase 7
-adds the inventory ledger described below. CLI and explicit stateless APIs remain database-free
-for reconciliation results.
+Phase 5 adds a supporting activity index; Phase 6 adds identity-domain governance; Phase 7 adds the
+inventory ledger; and Phase 8 adds a read model plus one supporting inventory index. CLI and
+explicit stateless APIs remain database-free for reconciliation results.
+
+## Product Phase 8 extension
+
+Phase 8 adds no entity, stored metric, mutable cache, materialized view, or grant. Procurement and
+supplier intelligence selects one completed `analysis_runs` row, its `analysis_sources`, immutable
+`result_snapshots`/finding evidence, and only the source headers/lines named by that source set.
+Repeated imports remain distinct evidence; there is no cross-import canonical document ID and no
+organization-wide procurement aggregate.
+
+Inventory intelligence reads the existing append-only operation/movement tables. Current on-hand is
+still the all-history item/location movement sum; bounded activity uses UTC `occurred_at`. Migration
+`0008` adds only
+`ix_inventory_operations_intelligence_window (organization_id, occurred_at, operation_type)`.
+Runtime and identity privileges, table count, RLS, foreign keys, and all Phase 7 write semantics are
+unchanged. See [intelligence metrics](intelligence-metrics.md) for source and null contracts.
 
 ## Product Phase 7 extension
 

@@ -95,6 +95,15 @@ Downgrade is refused after inventory/master metadata exists instead of erasing t
 [inventory ledger contract](inventory-ledger.md) before adding another inventory writer; every
 writer must follow the same item-then-sorted-location locking protocol.
 
+`0008` adds only
+`ix_inventory_operations_intelligence_window (organization_id, occurred_at, operation_type)` for
+bounded 7/30/90-day intelligence counts. It adds no table, stored aggregate, materialized view, or
+privilege. A restricted-runtime `EXPLAIN ANALYZE` comparison with 20,000 synthetic operations
+measured 2.624 ms before and 0.657 ms after the index, with identical result rows and explicit index
+use. Clean upgrade and `0007 → 0008 → 0007 → 0008` tests preserve all Phase 7 records. Production
+cardinality and latency still require deployment monitoring. See
+[the intelligence metric contract](intelligence-metrics.md#query-design-and-cost).
+
 After migrating, run HTTP with the tenant login in `DATABASE_URL` and the identity login in
 `IDENTITY_DATABASE_URL`, never the schema-owner URL. Do not reuse the migration process environment.
 `tenant_session(engine, verified_organization_uuid)` starts a transaction, binds transaction-local
@@ -159,7 +168,7 @@ only to the disposable API launcher. It seeds synthetic manager/member membershi
 launcher-owned database. This is not a production account setup or an HTTP administration endpoint;
 do not put this variable in public/frontend configuration or deploy the test launcher.
 
-See [the Phase 7 report](product-phase-7-report.md) for current tested versions and counts, and
+See [the Phase 8 report](product-phase-8-report.md) for current tested versions and counts, and
 [data-model-v1.md](data-model-v1.md) for ownership, immutable snapshots, duplicate preservation,
 deletion rules, and unresolved references. Follow [backup/restore](backup-restore.md) for operational
 credential separation and restoration checks.

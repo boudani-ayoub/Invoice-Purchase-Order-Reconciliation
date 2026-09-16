@@ -86,6 +86,16 @@ positive exact decimal strings, and ambiguous browser failures retain one idempo
 explicit retry. Imported procurement evidence never changes on-hand. See
 [inventory threats](docs/threat-model-inventory.md) and [ledger semantics](docs/inventory-ledger.md).
 
+Insights is denied to MEMBER and read-only for AP_MANAGER/ORG_ADMIN. All three intelligence GET
+routes recheck the live `VIEW_INTELLIGENCE` permission and active organization under forced RLS;
+navigation and `/insights` guards are not authorization. Procurement/supplier responses are scoped
+to one completed saved run and never sum history. Inventory responses use only the append-only
+ledger, bounded 7/30/90-day occurred-time windows, and keyset pages. Responses exclude comments,
+notes, emails, tokens, hashes, and external-reference bodies. Money remains exact currency-keyed
+strings and quantities stay item/location-specific. See
+[intelligence threats](docs/threat-model-intelligence.md) and
+[metric semantics](docs/intelligence-metrics.md).
+
 - `NEXT_PUBLIC_API_BASE_URL` is intentionally browser-visible configuration and accepts only an
   HTTP or HTTPS origin. It must never contain tokens, passwords, or other secrets.
 - `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` is public build configuration. It defaults to 120 seconds
@@ -141,6 +151,11 @@ atomic and concurrent issues cannot oversell. Runtime has no ledger UPDATE/DELET
 triggers reject both, and database validation checks movement signs, transfer pairs, and reversal
 inverses. Item/location mutations are column-scoped and versioned. The identity role has no
 inventory access. A schema owner or superuser can still bypass or disable these controls.
+
+Intelligence adds no table or write grant. Its selected-run queries use persisted snapshot facts for
+reconciliation meaning and source rows only for descriptive aggregates. Its inventory queries do
+not touch procurement receipts. Migration `0008` adds only a tenant-leading occurred-time index;
+the existing runtime, identity, RLS, and append-only privilege boundaries remain unchanged.
 
 Finding workflow uses separate `finding_events`, with forced RLS, same-tenant finding/actor FKs,
 SELECT/INSERT-only runtime grants and privileged-row-mutation protection. Comments/resolution text
