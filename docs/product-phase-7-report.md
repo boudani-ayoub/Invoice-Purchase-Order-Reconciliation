@@ -22,7 +22,8 @@ Phase 8 work. It does not claim production readiness.
 - Phase 7 implementation head before documentation: `74c514ab0a72b554bb74682684f536575fae33c7`.
 - The unrelated root `package-lock.json` remains untracked and unchanged. SHA-256:
   `DAA0308A5EB8C96651E80918807B4EC840C32FA960BC4308AC915136161868AE`.
-- Phase 7 was not pushed. Remote verification is therefore outside this report.
+- At the time this local verification was recorded, Phase 7 had not yet been pushed. The remote
+  verification sequence that followed is recorded in the closure section below.
 
 ## Schema and database boundary
 
@@ -196,8 +197,32 @@ twice without a balance change, renders markup as text, and verifies AP_MANAGER/
 | `cbe7dff` | tenant-scoped service/API, permissions, locking, idempotency, and database behavior tests |
 | `74c514a` | role-sensitive inventory UI, exact typed client, unit tests, and real-stack browser flow |
 
-The final documentation commit is reported in the completion message rather than embedded
-self-referentially here.
+The Phase 7 architecture and local verification record was committed as
+`0ffadce4374edce27932f47b588f052ca127d10a` and pushed to `main`.
 
-Phase 7 is complete locally. No automatic GoodsReceipt posting exists, no inventory valuation was
-added, no Phase 8 feature was implemented, and no push was performed.
+## Remote closure
+
+The initial Phase 7 GitHub Actions run, `35036711400`, failed. Python test execution passed on both
+supported versions, PostgreSQL authentication and inventory integration passed, frontend and
+authenticated browser verification passed, and Ruff lint passed. The only failure was Ruff's
+format check for `tests/database/test_dashboard_upgrade.py`.
+
+The formatting-only discrepancy was corrected in
+`f7d5a4a99bd753ee542ac9d0ac53a0479ba0a465` (`style: apply ruff formatting to phase 7 migration
+test`). The change affected only that test file and did not alter business logic. Corrective
+GitHub Actions run `35059644196` succeeded with all four jobs green:
+
+- Python 3.11;
+- Python 3.12;
+- PostgreSQL and authentication integration;
+- frontend and authenticated browser verification.
+
+Phase 7 is complete and remotely verified.
+
+- Remote Phase 7 implementation/fix HEAD:
+  `f7d5a4a99bd753ee542ac9d0ac53a0479ba0a465`.
+- GitHub Actions: `35059644196`.
+- Result: success; all four jobs passed.
+- No automatic `GoodsReceipt` to stock posting exists.
+- No inventory valuation was added.
+- No Phase 8 functionality was implemented.
