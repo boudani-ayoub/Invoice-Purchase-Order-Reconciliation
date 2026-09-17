@@ -1,9 +1,10 @@
 """Validated private authentication settings."""
 
 import base64
+import math
 import os
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 CSRF_HEADER = "X-CSRF-Token"
 AUTH_PATH = "/api/v1/auth"
@@ -11,6 +12,7 @@ PASSWORD_MIN_LENGTH = 15
 PASSWORD_MAX_LENGTH = 128
 TOKEN_BYTES = 32
 IDENTITY_GROUP = "reconcile_identity"
+_LOOPBACK_DATABASE_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
 def origin(value: str) -> str:
@@ -33,6 +35,17 @@ def origin(value: str) -> str:
     if not valid:
         raise ValueError("Browser origins must be explicit HTTP(S) origins without credentials")
     return value
+
+
+def _validate_production_database_transport(value: str) -> None:
+    try:
+        parts = urlsplit(value)
+        parameters = parse_qs(parts.query)
+    except ValueError:
+        raise ValueError("Production database configuration is invalid") from None
+    if parts.hostname and parts.hostname.lower() not in _LOOPBACK_DATABASE_HOSTS:
+        if parameters.get("sslmode") != ["verify-full"]:
+            raise ValueError("Remote production databases require sslmode=verify-full")
 
 
 @dataclass(frozen=True)
@@ -62,6 +75,8 @@ class AuthSettings:
     mail_attempts: int = 3
     mail_window_seconds: int = 3600
     docs_enabled: bool = False
+    readiness_timeout_seconds: float = 2.0
+    database_connect_timeout_seconds: int = 5
 
     def __post_init__(self) -> None:
         if self.environment not in {"development", "production"}:
@@ -83,11 +98,17 @@ class AuthSettings:
             self.login_window_seconds,
             self.mail_attempts,
             self.mail_window_seconds,
+            self.readiness_timeout_seconds,
+            self.database_connect_timeout_seconds,
         ):
             if setting <= 0:
                 raise ValueError("Authentication lifetimes and limits must be positive")
         if self.session_idle_seconds > self.session_absolute_seconds:
             raise ValueError("Idle lifetime cannot exceed absolute session lifetime")
+        if not math.isfinite(self.readiness_timeout_seconds):
+            raise ValueError("READINESS_TIMEOUT_SECONDS must be finite")
+        if self.readiness_timeout_seconds > 30 or self.database_connect_timeout_seconds > 30:
+            raise ValueError("Database health timeouts must not exceed 30 seconds")
         if self.mail_mode not in {"smtp", "disabled"}:
             raise ValueError("AUTH_MAIL_MODE must be smtp or disabled")
         if self.mail_mode == "disabled" and (
@@ -101,10 +122,15 @@ class AuthSettings:
             or not 1 <= self.smtp_port <= 65535
         ):
             raise ValueError("SMTP requires a host, sender, valid port, and TLS transport")
-        if self.environment == "production" and (
-            not self.require_verification or any(not v.startswith("https://") for v in origins)
-        ):
-            raise ValueError("Production requires email verification and HTTPS browser origins")
+        if self.environment == "production":
+            if not self.require_verification or any(not v.startswith("https://") for v in origins):
+                raise ValueError("Production requires email verification and HTTPS browser origins")
+            if self.docs_enabled:
+                raise ValueError("Production API documentation must remain disabled")
+            if self.identity_database_url == self.tenant_database_url:
+                raise ValueError("Identity and tenant database connections must use separate roles")
+            _validate_production_database_transport(self.identity_database_url)
+            _validate_production_database_transport(self.tenant_database_url)
 
     @property
     def secure_cookies(self) -> bool:
@@ -131,6 +157,12 @@ class AuthSettings:
                 return int(os.environ.get(name, str(default)))
             except ValueError:
                 raise ValueError(f"{name} must be an integer") from None
+
+        def number(name: str, default: float) -> float:
+            try:
+                return float(os.environ.get(name, str(default)))
+            except ValueError:
+                raise ValueError(f"{name} must be a number") from None
 
         try:
             encoded = os.environ.get("AUTH_CSRF_SECRET", "")
@@ -179,4 +211,6 @@ class AuthSettings:
             mail_attempts=integer("AUTH_MAIL_ATTEMPTS", 3),
             mail_window_seconds=integer("AUTH_MAIL_WINDOW_SECONDS", 3600),
             docs_enabled=boolean("AUTH_DOCS_ENABLED", environment == "development"),
+            readiness_timeout_seconds=number("READINESS_TIMEOUT_SECONDS", 2.0),
+            database_connect_timeout_seconds=integer("DB_CONNECT_TIMEOUT_SECONDS", 5),
         )

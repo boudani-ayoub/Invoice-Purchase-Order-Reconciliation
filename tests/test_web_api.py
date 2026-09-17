@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib.metadata import version
@@ -78,6 +79,32 @@ def test_health_returns_package_version(client: TestClient) -> None:
         "status": "ok",
         "version": version("invoice-purchase-order-reconciliation"),
     }
+
+
+def test_operational_log_uses_route_template_and_omits_request_details(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    resource_id = "4fcb3783-b7cf-47b2-96fd-42121a3c864d"
+    sensitive = "private-query-cookie-and-header"
+    with caplog.at_level(logging.INFO, logger="reconcile.access"):
+        response = client.get(
+            f"/api/v1/runs/{resource_id}?token={sensitive}",
+            headers={"Cookie": f"session={sensitive}", "Authorization": sensitive},
+        )
+
+    event = json.loads(caplog.messages[-1])
+    assert event == {
+        "elapsed_ms": event["elapsed_ms"],
+        "event": "http_request",
+        "method": "GET",
+        "request_id": response.headers["X-Request-ID"],
+        "response_size": len(response.content),
+        "route": "/api/v1/runs/{run_id}",
+        "status": response.status_code,
+    }
+    assert event["elapsed_ms"] >= 0
+    assert resource_id not in caplog.text
+    assert sensitive not in caplog.text
 
 
 def test_builtin_api_documentation_is_available(client: TestClient) -> None:

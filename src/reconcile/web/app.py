@@ -32,6 +32,7 @@ from reconcile.auth.service_errors import AuthError
 from reconcile.web.auth import require_analysis
 from reconcile.web.auth import router as auth_router
 from reconcile.web.auth_body import AuthBodyLimitMiddleware
+from reconcile.web.health import databases_ready
 from reconcile.web.paths import ANALYSES_PATH
 from reconcile.web.provenance import UploadedSource, safe_filename
 from reconcile.web.reports import (
@@ -41,7 +42,11 @@ from reconcile.web.reports import (
     ThreeWayReport,
     render_analysis,
 )
-from reconcile.web.request_security import AnalysisGateMiddleware, RequestIdMiddleware
+from reconcile.web.request_security import (
+    AnalysisGateMiddleware,
+    OperationalLoggingMiddleware,
+    RequestIdMiddleware,
+)
 from reconcile.web.safe_errors import SafeErrorsMiddleware
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -105,6 +110,7 @@ def create_app(
     application.add_middleware(AuthBodyLimitMiddleware)
     application.add_middleware(AnalysisGateMiddleware)
     application.add_middleware(SafeErrorsMiddleware)
+    application.add_middleware(OperationalLoggingMiddleware)
     application.add_middleware(RequestIdMiddleware)
     application.include_router(auth_router)
     from reconcile.web.admin import router as admin_router
@@ -165,6 +171,15 @@ def create_app(
     @application.get("/health", summary="Check API availability")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": application.version}
+
+    @application.get("/health/ready", summary="Check critical request dependencies")
+    async def readiness(request: Request) -> JSONResponse:
+        ready = await databases_ready(request.app.state.auth)
+        return JSONResponse(
+            status_code=200 if ready else 503,
+            content={"status": "ready" if ready else "not_ready"},
+            headers={"Cache-Control": "no-store"},
+        )
 
     @application.post(
         "/api/v1/reconcile",

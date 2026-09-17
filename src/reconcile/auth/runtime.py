@@ -118,8 +118,14 @@ class AuthRuntime:
     @classmethod
     def from_environment(cls) -> "AuthRuntime":
         settings = AuthSettings.from_environment()
-        identity = database_engine(settings.identity_database_url)
-        tenant = database_engine(settings.tenant_database_url)
+        identity = database_engine(
+            settings.identity_database_url,
+            connect_timeout_seconds=settings.database_connect_timeout_seconds,
+        )
+        tenant = database_engine(
+            settings.tenant_database_url,
+            connect_timeout_seconds=settings.database_connect_timeout_seconds,
+        )
         try:
             verify_database_role(identity, identity=True)
             verify_database_role(tenant, identity=False)

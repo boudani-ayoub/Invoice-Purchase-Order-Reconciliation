@@ -611,6 +611,26 @@ def test_sensitive_responses_and_validation_do_not_expose_secrets(auth, caplog):
     assert oversized.status_code == 413
 
 
+def test_liveness_and_bounded_database_readiness_are_distinct(auth, monkeypatch):
+    liveness = auth[1].get("/health")
+    readiness = auth[1].get("/health/ready")
+    assert liveness.status_code == 200
+    assert readiness.status_code == 200
+    assert readiness.json() == {"status": "ready"}
+    assert readiness.headers["cache-control"] == "no-store"
+
+    from reconcile.web import health
+
+    def fail_without_details(engine, timeout):
+        raise RuntimeError("private database URL and row detail")
+
+    monkeypatch.setattr(health, "_probe", fail_without_details)
+    unavailable = auth[1].get("/health/ready")
+    assert unavailable.status_code == 503
+    assert unavailable.json() == {"status": "not_ready"}
+    assert "private" not in unavailable.text
+
+
 def test_production_cookie_attributes(auth):
     service, _, mailbox, clock = auth
     production = replace(

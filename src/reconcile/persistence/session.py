@@ -28,12 +28,19 @@ def database_url(value: str | None = None) -> URL:
         ) from None
 
 
-def database_engine(value: str | None = None, *, pool_size: int = 5) -> Engine:
+def database_engine(
+    value: str | None = None,
+    *,
+    pool_size: int = 5,
+    connect_timeout_seconds: int = 5,
+) -> Engine:
     return create_engine(
         database_url(value),
         pool_pre_ping=True,
         pool_size=pool_size,
         max_overflow=0,
+        pool_timeout=connect_timeout_seconds,
+        connect_args={"connect_timeout": connect_timeout_seconds},
         hide_parameters=True,
         echo=False,
     )
