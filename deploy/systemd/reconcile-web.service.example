@@ -1,0 +1,33 @@
+[Unit]
+Description=Reconciliation Next.js service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=reconcile
+Group=reconcile
+WorkingDirectory=/opt/reconcile/current/frontend
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0077
+LimitNOFILE=4096
+TasksMax=128
+MemoryMax=1G
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
