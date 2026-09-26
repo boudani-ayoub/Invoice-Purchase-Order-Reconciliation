@@ -65,9 +65,11 @@ around the runtime/identity contract. See the official
 5. Verify source/run/snapshot/audit/governance row counts, representative report JSON and hashes,
    same-tenant actor links, invitation lifecycle, and login/session behavior. Use a restricted
    synthetic account for browser checks.
-6. Check all 24 tables retain ENABLE/FORCE RLS, snapshot/audit/governance triggers and checks are present,
-   runtime cannot DELETE/TRUNCATE, rewrite evidence/audit, or access invitations/governance events,
-   and identity cannot read procurement.
+6. Check every application table retains ENABLE/FORCE RLS; snapshot, run-audit, workflow,
+   governance, inventory-ledger, and inventory-validation triggers/checks are present; the dashboard
+   activity and inventory intelligence-window indexes exist; runtime cannot DELETE/TRUNCATE or
+   rewrite evidence/audit/ledger rows; and identity cannot read procurement, workflow, inventory,
+   or intelligence source state.
    Reads without tenant context must return no tenant history; cross-tenant GET/PATCH/archive
    must return `404`. Confirm owner credentials are absent from HTTP startup.
 7. Verify session/recovery-token invalidation policy with the incident owner. Restoring old auth
@@ -79,12 +81,23 @@ around the runtime/identity contract. See the official
 
 ## Repository smoke evidence
 
-`tests/database/test_run_backup.py` creates a synthetic saved run, dumps its disposable database,
-restores into another empty disposable database, compares the exact snapshot and audit actor,
-and rechecks tenant and identity access. It requires `TEST_DATABASE_ADMIN_URL` plus compatible
-`pg_dump`/`pg_restore` on PATH (or test-only `POSTGRES_BIN`). The test explicitly skips without
-those clients. It passed locally on PostgreSQL 17.11 during Phase 3. It does not test encryption,
-off-host transport, key recovery, large-data recovery time, or a production restore.
+`tests/database/test_run_backup.py` now creates a synthetic saved three-way run, source evidence,
+findings and comment history, governance invitation/event, and a `7.25` inventory receipt. It proves
+selected-run intelligence before capture, makes a PostgreSQL custom dump, restores into another empty
+disposable database, and then verifies:
+
+- exact Alembic revision `0008`, ENABLE/FORCE RLS on every application table, restricted runtime and
+  identity roles, destructive-grant absence, immutable triggers, the dashboard activity index, and
+  the inventory intelligence-window index;
+- identity/membership/session authentication, invitation/governance evidence, source/report/audit and
+  workflow evidence, and no tenant rows without an RLS context;
+- a real re-login, the restored selected-run result state (6 matched, 11 review-required), and the
+  restored `7.25` current inventory balance.
+
+It requires `TEST_DATABASE_ADMIN_URL` plus compatible `pg_dump`/`pg_restore` on PATH (or test-only
+`POSTGRES_BIN`) and explicitly skips without those clients. Phase 9 passed it locally with PostgreSQL
+17.11 client/server. It does not test encryption, off-host transport, key recovery, large-data recovery
+time, point-in-time recovery, or a production restore.
 
 ## Retention and deletion
 

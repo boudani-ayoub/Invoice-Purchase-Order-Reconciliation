@@ -1,228 +1,306 @@
-# Deployment profile
+# Production deployment profile
 
-## Readiness boundary
+## Boundary and topology
 
-The product now has first-party authentication, server-side sessions, tenant authorization, CSRF,
-and PostgreSQL-backed identifier throttles. Phase 4 adds finding workflow with durable in-app
-follow-up dates and append-only business comments; it adds no email/push reminder worker or queue.
-Do not promise closed-app notification delivery. Phase 5 adds manager-only read aggregates and
-one event activity index, not a global financial report. Apply migration 0005 with a maintenance
-window and reviewed timeout policy; measure large-tenant aggregate and median costs before public
-use. See the [dashboard threat review](threat-model-dashboard.md).
-Phase 6 adds identity-role organization administration, email invitations, and a merged audit view.
-Apply migration 0006 as the migration owner and verify that runtime still has no invitation,
-governance-event, or membership-update privileges. Test invitation delivery through the configured
-SMTP provider; a committed invitation whose mail fails must be revoked and reissued. There is no
-durable mail queue. See the [governance threat review](threat-model-governance.md).
-Phase 7 adds the append-only inventory ledger. Apply migration 0007 as the migration owner and
-verify that runtime has no UPDATE/DELETE on operations or movements and identity has no inventory
-access. Inventory writes serialize on item and affected location locks; monitor transaction time,
-lock waits, ledger growth, and balance-query cost. A timed-out client may retry only with the same
-idempotency key. Procurement imports never post stock. See the
-[inventory ledger](inventory-ledger.md) and [inventory threat review](threat-model-inventory.md).
-Raw analysis files remain request-scoped; validated
-records, reports, metadata, and audit evidence are retained in PostgreSQL. This is
-not approval for a public financial service: network resource limits, operational recovery,
-deployment-specific threat review, and monitoring are still required. See the
-[auth threat model](threat-model-auth.md), [persistence threat model](threat-model-persistence.md),
-[workflow threat model](threat-model-workflow.md),
-and [backup/restore runbook](backup-restore.md).
+This repository supplies a hardened, production-like deployment profile. It does not prove that a
+public service exists, certify the application, or provide an availability, RPO, RTO, legal-retention,
+or compliance guarantee. A deployment owner must still provision a real hostname, certificate,
+private network, secret manager, SMTP service, backups, monitoring, and incident ownership.
 
-The preferred topology uses one public HTTPS origin:
+The supported browser topology is one public HTTPS origin:
 
 ```text
 Browser
-   ↓ HTTPS
+   | HTTPS
 Nginx
-   ├── /api/* → Uvicorn / FastAPI on 127.0.0.1:8000
-   └── /*     → next start on 127.0.0.1:3000
+   |-- /api/*, /health, /health/ready -> Uvicorn/FastAPI 127.0.0.1:8000
+   `-- /*                              -> Next.js        127.0.0.1:3000
+
+FastAPI -> separate identity and tenant-runtime roles -> private PostgreSQL
+FastAPI -> TLS SMTP provider
 ```
 
-This same-origin arrangement removes the need for cross-origin browser access. Build the frontend
-with the public origin, not a private loopback address:
+PostgreSQL, Uvicorn, and Next.js must not be reachable from the public network. Same-origin service
+preserves the `SameSite=Strict` cookie policy and avoids broad CORS. A split-origin deployment is
+supported only when both exact HTTPS origins are explicitly configured and remain same-site; do not
+weaken cookie attributes to support an unrelated site.
 
-```bash
-NEXT_PUBLIC_API_BASE_URL=https://reconcile.example.com npm run build
-```
+The concrete files are:
 
-`NEXT_PUBLIC_*` values are embedded in browser assets at build time and are not secrets. Changing
-them requires a new frontend build. `NEXT_PUBLIC_RECONCILIATION_TIMEOUT_MS` defaults to `120000`.
+- `deploy/nginx/reconcile.conf.example`: public proxy, TLS, body, timeout, rate, connection, and
+  safe-access-log controls.
+- `deploy/systemd/reconcile-api.service.example`: loopback-only Uvicorn with two workers and bounded
+  per-worker concurrency.
+- `deploy/systemd/reconcile-web.service.example`: loopback-only Next production process.
+- `deploy/reconcile.env.example`: private runtime configuration shape, never working credentials.
+- `deploy/logging.json`: explicitly enabled safe request events and disabled raw Uvicorn access logs.
+- `scripts/render_nginx_config.py`: fixed-field renderer that rejects Nginx-fragment injection.
 
-## Nginx example
-
-Replace the hostname and certificate paths before use. Enable HSTS only after HTTPS is stable for
-the entire hostname.
-
-```nginx
-server {
-    listen 80;
-    server_name reconcile.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name reconcile.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/reconcile.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/reconcile.example.com/privkey.pem;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    location /api/ {
-        client_max_body_size 32m;
-        proxy_connect_timeout 5s;
-        proxy_send_timeout 130s;
-        proxy_read_timeout 130s;
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location / {
-        proxy_connect_timeout 5s;
-        proxy_read_timeout 60s;
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-The 32 MiB proxy ceiling covers three files at the 10 MiB application limit plus multipart
-overhead. It is a total request limit, while FastAPI enforces 10 MiB on each file. Keep both layers:
-the multipart server or proxy can receive or spool authorized bytes before the endpoint rejects
-one file. Application middleware rejects unauthorized upload requests before body consumption;
-it cannot prevent a proxy from buffering bytes before forwarding the request.
-Protect proxy and operating-system temporary storage with restrictive permissions, bounded space,
-short retention, and encrypted disks where sensitive files are permitted.
-
-The 130-second API proxy timeout is slightly longer than the default 120-second browser wait. A
-browser abort does not cancel server-side reconciliation, and the current API exposes no cancellation
-protocol. A create may commit despite a browser timeout. Check History before resubmitting; there
-is no idempotent retry contract. Do not label the timeout as cancellation. Tune all three layers together after measuring
-representative files rather than simply increasing them without a resource budget.
-
-## Processes and forwarded headers
-
-Run both services as an unprivileged dedicated account and bind them to loopback. A supervisor such
-as systemd should start them after networking, restart unexpected failures, apply memory and file
-limits, and collect logs. Representative commands are:
-
-```bash
-python -m uvicorn reconcile.web.app:app \
-  --host 127.0.0.1 \
-  --port 8000 \
-  --proxy-headers \
-  --forwarded-allow-ips=127.0.0.1
-
-npm run start -- --hostname 127.0.0.1 --port 3000
-```
-
-Trust forwarded headers only from the actual proxy address. Do not use `*` for
-`--forwarded-allow-ips` on an exposed listener. Monitor `GET /health` internally, but do not treat
-it as proof that authentication, authorization, or downstream policy is correct.
-
-For a deliberately separate frontend and API origin, build with the exact public API origin and set
-the API process environment to the exact frontend origin:
+Render into a protected staging path and validate before installation:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=https://api.reconcile.example.com
-RECONCILE_ALLOWED_ORIGINS=https://app.reconcile.example.com
+python -m scripts.render_nginx_config \
+  --template deploy/nginx/reconcile.conf.example \
+  --output <staged-nginx-conf> \
+  --host <lowercase-production-host> \
+  --certificate <absolute-fullchain-path> \
+  --private-key <absolute-private-key-path> \
+  --client-body-temp <absolute-restricted-temp-path> \
+  --access-log <absolute-access-log-path> \
+  --error-log <absolute-error-log-path>
+
+nginx -t
 ```
 
-Also set `FRONTEND_PUBLIC_URL` to the trusted frontend origin. Comma-separated additional trusted
-origins are supported. GET/POST/PATCH credentialed CORS allows Content-Type and X-CSRF-Token only for
-the explicit allow-list; wildcards are rejected. Separate hosts must be same-site over HTTPS for
-SameSite=Strict cookies. Unrelated cross-site frontend/API deployments are not supported by this
-cookie policy. Prefer the same-origin topology instead of weakening the cookies.
+Do not copy the example hostname, database hosts, senders, or paths without review.
 
-## Security headers and browser resources
+## Production configuration and secrets
 
-Next.js owns the focused CSP and static browser headers in `next.config.ts`. Nginx owns transport
-controls such as TLS and HSTS. Avoid sending duplicate CSP headers from both layers because browsers
-enforce every policy and an accidental conflict can break the application.
+The API reads process environment; it does not load `.env.example` automatically. Install the real
+environment file outside the checkout with root ownership, service-group read access, and no
+world access, or inject equivalent values from a secret manager. The frontend build receives only
+`NEXT_PUBLIC_API_BASE_URL` and the optional public request timeout. Never put credentials, token
+keys, SMTP settings, or database URLs in a `NEXT_PUBLIC_*` variable.
 
-The repository has no third-party fonts, scripts, analytics, or CDNs. A stricter deployment CSP that
-adds `default-src`, `script-src`, `style-src`, or `connect-src` must account for the selected API
-origin and Next.js rendering mode. Use nonces or reviewed hashes when that policy is introduced;
-do not add broad host wildcards or `unsafe-eval` to make a broken production policy pass.
+Production startup fails closed when:
 
-## Logging and operations
+- browser origins are missing, wildcarded, credential-bearing, or not HTTPS;
+- email verification is disabled, mail is disabled, or API documentation is enabled;
+- the CSRF key is not at least 32 sufficiently varied random bytes;
+- identity and tenant connection strings are identical;
+- a non-loopback database URL omits `sslmode=verify-full`;
+- authentication lifetimes/limits are non-positive, or database connect/readiness timeouts exceed
+  30 seconds (readiness must also be finite);
+- a connection host is missing or libpq query options attempt to override the explicit host;
+- either HTTP database login is administrative, owns tables, has `BYPASSRLS`, can create schema
+  objects, belongs to both application groups, or crosses the identity/tenant table boundary.
 
-- Log request time, route, status, response size, and a generated correlation identifier.
-- Do not log multipart bodies, CSV rows, response reports, filenames, query strings, request
-  headers, invitation URLs, or token-bearing URL fragments.
-- Do not log workflow comments, resolution notes, invitation tokens, or member display text.
-  Do not log inventory notes, external references, idempotency keys, or movement request bodies.
-  Include findings and append-only run/workflow/governance/inventory events in encrypted backups and
-  restoration verification. Archive and membership deactivation do not erase this content. Bound
-  authenticated mutation rates and storage growth at the deployment layer.
-- Restrict log access and retention as financial metadata may still be inferable from timing and
-  request volume.
-- Alert on repeated `413`, `422`, `5xx`, timeouts, restarts, memory pressure, and temporary-volume
-  exhaustion without copying uploaded content into alerts.
-- Rotate logs and test recovery, graceful restart, deployment rollback, and temporary-file cleanup.
-- Keep Nginx, Node.js, Python, FastAPI, Uvicorn, and multipart dependencies patched. Run `npm audit`,
-  `python -m pip check`, the test suites, and the production build before promotion.
+Generate `AUTH_CSRF_SECRET` privately with a cryptographic random generator. All API workers must
+share it. Rotating it invalidates CSRF proofs, not sessions; follow the
+[incident runbook](incident-response.md) if sessions must also be revoked. Keep migration-owner,
+runtime, identity, backup-operator, and SMTP credentials independent. For remote PostgreSQL, keep
+the server on a private network and use a reviewed CA plus hostname verification. A protected
+libpq passfile or secret injection avoids an inline password in the environment example.
 
-Network/IP rate limits, bounded concurrency, audit/retention, and incident response must be
-operational before this profile is considered internet-facing production. Account buckets alone
-cannot stop an attacker rotating identifiers. Never derive trusted IPs from arbitrary forwarded
-headers. Apply a small auth-location body limit and suitable proxy connection/timeout limits in
-addition to the application's 16 KiB JSON bound; multipart may be parsed/spooled before route
-dependencies reject unauthorized analyses.
+The repository secret check rejects tracked private-key containers, environment files, private-key
+markers, inline private setting values, credentialed database URLs, and common token prefixes. It
+is a regression guard, not entropy analysis, provider-side revocation, or a replacement for an
+organization secret-scanning service.
 
-## Required private authentication configuration
+## TLS and proxy controls
 
-The four `/api/v1/analyses/*` routes and legacy `/api/v1/reconcile` share the same upload boundary.
-The 32 MiB total proxy ceiling accommodates the three-file mode; two-file routes declare only
-their required inputs. Only the CLI can run without a database URL or optional packages.
+Nginx rejects unknown cleartext hosts, rejects unknown TLS handshakes, and redirects the configured
+HTTP host to its fixed HTTPS hostname. The template permits TLS 1.2 and 1.3 only; certificates and
+private keys remain outside Git. Restrict private-key readability to the Nginx master and approved
+certificate automation.
 
-Database development and migration commands are in [database-development.md](database-development.md).
-Provision separate migration, identity, and tenant-runtime logins. Set `DATABASE_URL` to the
-runtime login and `IDENTITY_DATABASE_URL` to the identity login only after owner-run migrations.
-HTTP startup rejects owner/admin/both-group connections. Keep PostgreSQL private, authenticate
-with strong unique credentials, and use `sslmode=verify-full` with an appropriate trust root for
-remote connections. Never expose database or SMTP settings through `NEXT_PUBLIC_*`.
+HSTS is intentionally commented. First prove the final hostname, certificate renewal, HTTP redirect,
+subdomain ownership, and recovery path. Then start with a short `max-age` under change control.
+Increase it only after observation; add `includeSubDomains` only when every subdomain is permanently
+HTTPS. Do not preload an example or unproven domain.
 
-Use [the backend example](../.env.example) as a checklist, not working production credentials:
+The checked-in limits are conservative samples, not universal capacity claims:
 
-- Explicit `APP_ENV=production`; `FRONTEND_PUBLIC_URL` and trusted origins use HTTPS.
-- A privately generated `AUTH_CSRF_SECRET` of at least 32 random bytes, URL-safe base64. All
-  workers must share it. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
-  in a private setup session, not build logs. Rotation invalidates existing CSRF proofs;
-  bootstrap gets a fresh proof. Revoke sessions separately for a session-compromise response.
-- `AUTH_REQUIRE_VERIFICATION=true`; `AUTH_MAIL_MODE=smtp`; SMTP host/sender and either SSL
-  (default port 465) or STARTTLS (configure the provider's port), with certificate validation.
-  Store SMTP credentials in the platform secret manager. Send real verification, recovery, and
-  invitation tests before release. Startup validates configuration, not provider delivery or DNS
-  authentication. Provider logs and bounce handling must not expose invitation links.
-- Default 30-minute idle / 12-hour absolute sessions, 24-hour verification, 30-minute reset, and
-  seven-day invitation tokens. Login allows five attempts per identifier per 15 minutes; registration, resend, and
-  recovery each allow three per hour. Tune using measured resource budgets.
-- `AUTH_DOCS_ENABLED=false` by default in production; `AUTH_REGISTRATION_ENABLED=false` can close
-  public registration without disabling existing accounts.
+| Boundary | Sample control |
+| --- | --- |
+| All clients | 20 concurrent proxy connections per source IP; 15-second body/keepalive and 30-second send bounds |
+| Pre-auth token/account mutations | 32 KiB body; 5 requests/minute/IP with burst 5; 20-second upstream timeout |
+| Analysis and saved-run uploads | 32 MiB total body; 10 requests/minute/IP with burst 3; 4 concurrent/IP; 130-second upstream timeout |
+| Other API requests | 256 KiB body; 30-second upstream timeout |
+| Application upload | 10 MiB per file, streamed and hashed; request-scoped temporary directory |
+| Uvicorn | two workers; 16 active requests and backlog 64 per worker; five-second keepalive |
 
-Production cookies are Secure, HttpOnly, SameSite=Strict, Path=/, no Domain, and __Host-prefixed.
-Use a single browser-facing hostname consistently in HTTP development too. Mail can be disabled
-only in explicit development with verification disabled; no secret links are printed or delivered.
+The example API memory ceiling is 3 GiB (frontend: 1 GiB). Argon2 verification uses 64 MiB per
+active password check; two workers at 16 requests can require about 2 GiB for that work alone,
+before Python, database pools, and parsing overhead. A smaller host must lower concurrency and
+worker counts together, rather than copy these settings unchanged. A memory ceiling contains host
+exhaustion but can still terminate a worker under load; this is not admission or capacity proof.
 
-API identity/report/error responses use no-store. Do not log Cookie, Set-Cookie, Authorization,
-X-CSRF-Token, bodies, or query strings. Avoid SQL echo and driver parameter logging. PostgreSQL
-error DETAIL can contain failed row values: restrict database logs, use terse error verbosity and
-disable parameter logging (`log_parameter_max_length=0`, `log_parameter_max_length_on_error=0`)
-as appropriate for the deployed cluster; see [PostgreSQL logging settings](https://www.postgresql.org/docs/17/runtime-config-logging.html).
-Mail-provider and browser trace artifacts need equivalent
-access/retention controls. Error-class-only application logging deliberately sacrifices detailed
-tracebacks; use sanitized operational metrics for diagnosis.
+The 32 MiB proxy ceiling accommodates three 10 MiB files plus multipart overhead. Nginx may buffer
+a body before FastAPI authorizes and streams it, so put the client-body temporary directory on a
+restricted, monitored, encrypted filesystem with bounded capacity. FastAPI authenticates known
+multipart routes before consuming their bodies and removes request directories after success,
+validation failure, size rejection, and handled failure. Proxy limits and temporary-storage protections
+also apply to unauthenticated submissions. Nginx rejects a total oversized body
+before the per-file application rule can run.
 
-Expired session/token/throttle/invitation records and retained governance events are not
-automatically purged. Plan bounded, privileged retention jobs and monitor table/index growth before
-public exposure; normal HTTP roles have no DELETE privilege. Back up account and governance state
-and test recovery with dedicated operator access. This project does not claim retention, legal-hold,
-secure-destruction, GDPR, or SOC 2 compliance.
+Network/IP limits complement the PostgreSQL identifier buckets; neither replaces the other. Nginx
+zones are local to an instance, NAT can group legitimate users, and distributed clients can evade
+one address bucket. Measure representative traffic, CPU, memory, temporary storage, database pool
+pressure, and false rejections before tuning. Do not remove all concurrency protection or silently
+serialize the whole application.
+
+## Forwarded headers, hosts, and process privilege
+
+Nginx overwrites `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`, and
+`X-Forwarded-Port`, and clears `Forwarded`; it never appends an internet-supplied forwarding chain.
+The accepted public hostname and configured HTTPS port are preserved canonically. Unknown public hosts do
+not reach either application. Uvicorn binds to loopback and accepts proxy headers only from
+`127.0.0.1`:
+
+```text
+--proxy-headers --forwarded-allow-ips=127.0.0.1
+```
+
+Never use `--forwarded-allow-ips=*` on an exposed listener. If a load balancer is later placed in
+front of Nginx, explicitly configure its address as the trusted real-IP source and retest the whole
+chain. A local process on the server is inside this network trust boundary; operating-system access
+control remains required.
+
+Both systemd examples use the unprivileged `reconcile` account, explicit working directories,
+loopback binding, restart-on-failure, a 30-second TERM shutdown window, file/task/memory ceilings,
+private temporary directories, a restrictive umask, and a reviewed subset of systemd hardening.
+They retain DNS, IPv4/IPv6, Unix sockets, and temporary storage needed for PostgreSQL, SMTP, Python,
+and Next.js. Build/install artifacts before enabling `ProtectSystem=strict`; the services do not
+write migrations or application source at startup.
+
+## Liveness, readiness, and correctness
+
+- `GET /health` is liveness only: the process can answer and reports its installed application
+  version. It does not query dependencies.
+- `GET /health/ready` concurrently probes both restricted database engines with configured connection
+  and statement bounds. It returns `200 {"status":"ready"}` or a generic, no-store
+  `503 {"status":"not_ready"}`. It never returns a URL, database error, tenant row, stack trace, or
+  credential and never sends SMTP or mutates data.
+- An authenticated release smoke is the business-path check. Readiness alone does not prove RLS,
+  permissions, matching correctness, mail delivery, backups, or browser behavior.
+
+Use liveness for process restart decisions and readiness for traffic admission. Alert on persistent
+readiness failure, but investigate the identity and tenant pools separately through private operator
+telemetry.
+
+## Logging and response-header ownership
+
+FastAPI emits one JSON operational event per request containing only the server-generated request
+UUID, HTTP method, normalized route template, response status, elapsed milliseconds, and response
+size. Literal UUID paths become templates. It does not log query strings, headers, cookies, bodies,
+filenames, source values, notes, external references, idempotency keys, credentials, or report data.
+Unexpected errors record only the exception class and request UUID.
+
+The Nginx safe access format contains time, returned request UUID, method, status, bytes, and timing;
+it omits the request target and all headers. Unknown-host access logging is off, and proxy error logs
+are restricted to critical process events. Keep all log access and retention restricted because
+timing and volume can still reveal business activity. Do not enable Uvicorn's default access format
+or Nginx's combined format without a separate redaction review.
+
+Next.js owns browser CSP, `nosniff`, Referrer-Policy, and Permissions-Policy. Nginx owns TLS and the
+staged HSTS decision. FastAPI owns API `nosniff`, `no-referrer`, and sensitive-response `no-store`.
+Proxy-origin body/rate/upstream errors use generic JSON, `nosniff`, and `no-store`. Do not add a second conflicting
+CSP, `unsafe-eval`, broad script hosts, remote fonts, or wildcard origins to make a deployment pass.
+
+## Release and migration procedure
+
+Normal HTTP processes never run migrations. Use the following controlled order:
+
+1. Record the release commit, package/frontend artifact hashes, PostgreSQL/client versions, owner,
+   maintenance decision, and compatibility review.
+2. Confirm the most recent backup/recovery point and its restore evidence meet the operator-approved
+   objective. Take a new protected recovery point when required.
+3. Stop or drain writes when the reviewed migration requires it. Do not expose migration credentials
+   to systemd application units.
+4. From an isolated operator session, set `DATABASE_URL` to the migration owner and run
+   `alembic upgrade head`, then `alembic check`.
+5. Verify the exact revision, ENABLE/FORCE RLS, application group grants, immutable triggers, indexes,
+   and that runtime/identity logins remain non-owner, non-admin, and separated.
+6. Install the reviewed API/frontend artifacts and render/validate Nginx. Start loopback services,
+   then require readiness before admitting traffic.
+7. Run the synthetic authenticated smoke below through HTTPS. Test configured SMTP delivery separately
+   without putting token links in logs.
+8. Observe error/status rates, latency, process/database resources, lock waits, and mail/backup signals
+   through the change window. Record the promotion decision.
+
+Schema compatibility is a release property, not implied by Alembic success. The current forward
+migrations preserve earlier application data, but an older application must be checked against the
+new exact schema before rollback.
+
+## Rollback runbook
+
+Application rollback and database downgrade are different decisions. Never make `alembic downgrade`
+an automatic rollback step.
+
+1. Contain traffic or writes and preserve request IDs, deployment events, sanitized process logs,
+   revision, and database evidence.
+2. If the schema is explicitly backward-compatible with the prior application, reinstall the prior
+   signed/reviewed API and frontend artifacts, keep the current schema, restart gracefully, require
+   readiness, run the smoke, and observe.
+3. If compatibility is unknown or false, keep traffic contained. Choose a reviewed correct-forward,
+   a new migration, or restoration of a pre-release recovery point. Restoration can discard
+   post-backup changes and can revive old sessions/tokens, so incident and data owners must approve it.
+4. Never run a destructive schema downgrade or restore over the live database. Rehearse in isolation,
+   verify counts/security/contracts, and use a controlled cutover.
+5. Document the cause, exact artifacts/revisions, data window, verification, and follow-up actions.
+
+The deployment acceptance harness performs a graceful Nginx reload and Next.js TERM shutdown,
+rejects an unbuilt candidate release, verifies frontend unavailability while API readiness remains
+healthy, restores the known-good release link, and verifies frontend recovery. It deliberately does
+not downgrade the database. This is an artifact-selection rehearsal, not proof that an arbitrary
+older application is compatible with a future schema.
+
+## Monitoring contract
+
+No monitoring vendor is installed. Operators must collect sanitized signals and assign responders:
+
+- request counts/statuses, especially sustained changes in `401`, `403`, `409`, `413`, `422`, and
+  `5xx`; request and reconciliation latency; upstream timeouts; Nginx rate/connection rejections;
+- authentication throttle activity, mail delivery failures, suspicious invitation/recovery use,
+  and repeated cross-tenant/not-found patterns without recording identifiers or token links;
+- API/Next/Nginx restarts, readiness state, CPU, memory, file descriptors, worker saturation, and
+  temporary-volume usage;
+- database connections/pool timeouts, query latency, deadlocks, lock waits, inventory contention,
+  transaction age, storage/table/index growth, and role/grant/RLS drift;
+- backup completion/integrity, protected-copy age, restore rehearsal age/result, certificate expiry,
+  dependency alerts, and failed release smoke checks.
+
+Numeric alerts require measured baselines and traffic objectives. Alert immediately on readiness loss,
+repeated `5xx`, database exposure, role drift, backup failure, certificate-renewal failure, secret
+leakage, unexpected owner/admin access, or evidence of tenant crossover. Trend capacity signals before
+they become outages. Alerts must carry request IDs and event classes, not payloads.
+
+## Operator release smoke
+
+Use only an approved synthetic tenant and files. Record request IDs and results, not source bodies.
+
+1. Confirm the public HTTPS certificate/hostname and HTTP-to-HTTPS redirect.
+2. Read `/health` for the expected application version and require `/health/ready` to return 200.
+3. Confirm migration revision `0008`, `alembic check`, role separation, RLS/grants/triggers, and private
+   PostgreSQL reachability from the operator network only.
+4. Sign in through Nginx, inspect Secure/HttpOnly/SameSite=Strict/Path=/ `__Host-` cookies, and select
+   the synthetic organization if required.
+5. Run the canonical synthetic three-way sample. Confirm 15 invoices, 17 invoice lines, 6 matched,
+   11 review-required, and disputed EUR 2450.00, MAD 10199.00, USD 75.00.
+6. Open History and the saved result; open Work and Dashboard; verify a MEMBER cannot use admin,
+   inventory, or intelligence APIs.
+7. As the approved role, read organization administration, inventory balances, selected-run
+   procurement/supplier intelligence, and current-ledger inventory intelligence. Do not create real
+   inventory or invitations for a smoke test.
+8. Sign out, confirm the session is rejected, review sanitized logs/metrics, and record the decision.
+
+The CI acceptance stack uses synthetic data, a one-run ephemeral certificate, Nginx, production Next,
+production-configured Uvicorn, and PostgreSQL 17. It verifies HTTPS/redirects, same-origin routing,
+cookies, login/session/logout, CSRF, tenancy, headers/no-store, forwarding, body/rate limits,
+loopback sockets, readiness, canonical reconciliation, graceful restart, and log-marker absence:
+
+```text
+bash scripts/run_deployment_acceptance.sh
+```
+
+By default this disposable harness binds Nginx to `127.0.0.1:8080/8443`; build the frontend with
+`NEXT_PUBLIC_API_BASE_URL=https://localhost:8443`. `PRODUCTION_E2E_HTTP_PORT` and
+`PRODUCTION_E2E_HTTPS_PORT` override the proxy ports when needed. The renderer's production defaults
+remain public IPv4 ports 80/443. An optional command argument vector can supply an external browser
+runner; CI uses the normal local Playwright command.
+
+It requires Linux, Nginx, OpenSSL, `ss`, Chromium/Playwright, a built frontend, installed Python
+extras, and `TEST_DATABASE_ADMIN_URL` pointing to an explicitly disposable PostgreSQL server. The
+ephemeral key is generated outside Git and removed afterward. This is evidence for the repository
+profile, not a penetration test or public production certification.
+
+The systemd units are reviewed examples; the acceptance test launches the server/proxy configuration
+directly with one API worker. It does not apply systemd memory/task/file-descriptor limits or launch
+those units. Validate account permissions, DNS, private DB/SMTP reachability,
+temporary uploads, static assets, and any required Next cache writes on the actual target host before
+enabling them. No real SMTP delivery, certificate renewal, firewall, backup schedule, or alerting
+service is exercised by the disposable stack.
+
+See the [backup/restore runbook](backup-restore.md), [incident response](incident-response.md), and
+[final threat model](threat-model-final.md) before any customer-facing deployment.

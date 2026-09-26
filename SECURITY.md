@@ -47,7 +47,9 @@ it with ordinary user privileges and review paths before using `--force`.
   422 without exposing temporary server paths.
 - Unexpected failures return a generic HTTP 500 payload. An ASGI error boundary logs only the
   exception class and a server-generated request UUID, preventing driver details from escaping
-  to Uvicorn traceback logging. Incoming request IDs are not trusted as audit identifiers.
+  to Uvicorn traceback logging. The structured operational log adds only method, normalized route
+  template, status, elapsed time, and response size; it excludes request targets, headers, bodies,
+  filenames, identifiers in paths, and report data. Incoming request IDs are not trusted.
 - Browser access is denied by default. `RECONCILE_ALLOWED_ORIGINS` accepts a comma-separated list
   of exact HTTP or HTTPS origins. Wildcards/credential-bearing origins are rejected. Credentialed
   CORS permits GET/POST/PATCH, Content-Type, and X-CSRF-Token only for the explicit allow-list.
@@ -56,10 +58,11 @@ it with ordinary user privileges and review paths before using `--force`.
   A header-only gate rejects unauthorized multipart requests on all nine upload routes before
   FastAPI consumes/spools their bodies. Authorized multipart still needs proxy resource limits.
   PostgreSQL stores identity, validated evidence, and saved analysis results, never raw upload bytes.
-- Do not expose the MVP anonymously to the public internet with sensitive financial data. A
-  production deployment requires HTTPS, explicit trusted origins, deployment-layer request limits,
-  timeouts, logging controls, tested account recovery, and a deployment-specific threat
-  review.
+- The checked-in production profile uses HTTPS Nginx, loopback-only Uvicorn/Next, exact proxy-header
+  trust, total-body/rate/connection limits, bounded Uvicorn concurrency, TLS 1.2/1.3, unprivileged
+  systemd units, liveness/readiness separation, safe proxy logging, and a production-like CI job.
+  These controls are readiness evidence, not proof that a public deployment exists or is certified.
+  See [deployment](docs/deployment.md) and the [final threat model](docs/threat-model-final.md).
 
 ## Frontend boundary
 
@@ -241,9 +244,12 @@ Avoid including sensitive data in a public issue. Use the repository's private v
 reporting option under the GitHub **Security** tab when available. Otherwise, contact the
 repository owner through the GitHub profile to agree on a private reporting channel.
 
-A public deployment still requires operational threat review, network-level resource limits,
-tested operational backup/restore, retention, and incident response. MFA, SSO, tamper-evident audit
-export, and platform administration remain future work. This policy does not claim production
-readiness or compliance certification.
-The current reverse-proxy baseline and its remaining requirements are documented in
-[`docs/deployment.md`](docs/deployment.md).
+The repository now defines network resource limits, current-schema restore evidence, release and
+rollback order, incident response, monitoring signals, and a final threat review. A real public
+deployment still requires operator-owned DNS/certificates, private networking, secrets, SMTP,
+encrypted scheduled backups, retention/legal decisions, measured capacity/alerts, recovery
+objectives, and environment-specific review. MFA, SSO, tamper-evident audit export, and platform
+administration remain absent. This policy makes no compliance, availability, penetration-test, or
+production-certification claim. Read [deployment](docs/deployment.md),
+[incident response](docs/incident-response.md), [backup/restore](docs/backup-restore.md), and the
+[final threat model](docs/threat-model-final.md).

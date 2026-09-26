@@ -2,15 +2,18 @@
 
 [![CI](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/workflows/ci.yml/badge.svg)](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/workflows/ci.yml)
 
-A deterministic procurement/AP analysis tool for invoice matching, receipt coverage, and
-purchase-order fulfillment.
+A deterministic invoice / purchase-order / goods-receipt reconciliation engine and persistent,
+authenticated multi-tenant web application. It includes saved evidence, AP exception workflow,
+organization governance, an explicit append-only inventory ledger, run-scoped procurement/supplier
+intelligence, and a reproducible production deployment profile.
 
-**Status:** Product Phase 8 adds read-only supplier, procurement, and inventory intelligence.
-Procurement and supplier metrics describe one explicitly selected saved run; they never sum runs or
-claim organization-wide spend. Inventory metrics use only the explicit append-only stock ledger,
-with bounded 7/30/90-day activity. Imported goods receipts still do not create stock. See the
-[metric contract](docs/intelligence-metrics.md), [Phase 8 report](docs/product-phase-8-report.md),
-and [intelligence threat review](docs/threat-model-intelligence.md).
+**Status:** all nine planned product phases are complete locally. Phase 9 adds the concrete
+same-origin Nginx/systemd profile, fail-closed production configuration, dependency readiness,
+safe structured request logging, network resource limits, current-schema restore verification,
+release/rollback/incident/monitoring procedures, a production-like HTTPS CI stack, and the final
+threat model. No public service or cloud resource has been deployed. See
+[deployment](docs/deployment.md), [Phase 9 report](docs/product-phase-9-report.md), and the
+[final threat model](docs/threat-model-final.md).
 
 ## Choose a workflow
 
@@ -64,13 +67,13 @@ Result: review required
 ## Architecture
 
 ```text
-CSV inputs → strict validation → typed models → reconciliation → authoritative results
-                                                        │
-                              ┌─────────────────────────┴─────────────────────────┐
-                              ↓                                                   ↓
-                    CLI + file outputs                              FastAPI JSON adapter
-                                                                                ↑
-                                                                       Next.js frontend
+CSV inputs -> strict validation -> typed models -> reconciliation -> authoritative results
+                                                        |
+                              +-------------------------+-------------------------+
+                              |                                                   |
+                    CLI + file outputs                              PostgreSQL persistence
+                                                                                 ^
+Browser -> HTTPS Nginx -> Next.js / FastAPI -> identity + tenant runtime roles ---+
 ```
 
 Validation, reconciliation, rendering, and filesystem orchestration remain separate. The core
@@ -566,6 +569,13 @@ and axe-core. No `PYTHONPATH` shortcut is used. Set `TEST_DATABASE_ADMIN_URL` be
 browser checks; it must identify an explicitly disposable local/CI PostgreSQL service.
 Dependabot checks dependencies and official GitHub Actions weekly.
 
+A fifth **Production deployment verification** job builds the frontend for `https://localhost:8443`,
+generates a one-run certificate, and tests Nginx -> production Next/Uvicorn -> PostgreSQL 17 with
+Playwright. It verifies redirects, same-origin routing, secure cookies, CSRF, tenant isolation,
+headers/no-store, request IDs, spoofed forwarding metadata, body/rate limits, loopback bindings,
+readiness, canonical reconciliation, graceful restart, and safe log samples. The generated private
+key and synthetic database are ephemeral and are not committed.
+
 A separate PostgreSQL 17 job installs `.[dev,web,db,auth]`, tests clean, Phase 1 and Phase 2 upgrades,
 and tests auth, constraints, and RLS with distinct non-owner identity/runtime logins. Configure
 `TEST_DATABASE_ADMIN_URL` and run `python -m pytest tests/database -vv` to reproduce it locally.
@@ -589,7 +599,8 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
   score/rating, promised-date/OTD claim, currency conversion, savings KPI, or recommendation model.
 - Archive is not deletion; no permanent-purge or retention engine is implemented.
 - Production SMTP must be configured and verified; no durable mail queue or auth-state purge job.
-- The API is a local/development MVP, not a public production financial service.
+- The repository has a tested deployment profile, not an operating public service, availability
+  guarantee, penetration-test certification, or compliance certification.
 - No returns, credit notes, taxes, freight, or as-of-date reconciliation.
 - Invoice workflows report invoice findings; the separate fulfillment workflow exposes orphan receipts.
 - No proof of a repeated whole document without a source occurrence identifier.
@@ -598,10 +609,12 @@ Review [`SECURITY.md`](SECURITY.md) before processing sensitive data or deployin
 - Two forced CSV replacements are staged together but are not one transactional operation.
 - This is a focused V0.1 control engine, not production ERP software.
 
-## Next product phase
+## Product sequence complete
 
-Product Phase 9 — authenticated production deployment and final deployment threat model. The
-complete sequence is recorded in [the security roadmap](docs/security-roadmap.md).
+Product Phase 9 is the final planned phase. Any future business capability or trust-boundary change
+requires a new scoped design and threat review. A real customer-facing deployment still requires the
+operator-owned controls listed in [deployment](docs/deployment.md) and the
+[security roadmap](docs/security-roadmap.md).
 
 ## Project history
 
@@ -618,7 +631,8 @@ The implementation decisions and verification evidence are preserved in
 [`Product Phase 5`](docs/product-phase-5-report.md), and
 [`Product Phase 6`](docs/product-phase-6-report.md), and
 [`Product Phase 7`](docs/product-phase-7-report.md), and
-[`Product Phase 8`](docs/product-phase-8-report.md).
+[`Product Phase 8`](docs/product-phase-8-report.md), and
+[`Product Phase 9`](docs/product-phase-9-report.md).
 
 ## License
 
