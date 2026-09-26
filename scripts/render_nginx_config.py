@@ -1,6 +1,7 @@
 """Render the reviewed Nginx example without accepting raw Nginx fragments."""
 
 import argparse
+import ipaddress
 import re
 from pathlib import Path
 
@@ -13,6 +14,9 @@ TOKENS = {
     "ERROR_LOG",
     "API_PORT",
     "WEB_PORT",
+    "LISTEN_ADDRESS",
+    "HTTP_PORT",
+    "HTTPS_PORT",
 }
 HOST = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
@@ -32,6 +36,7 @@ def render(template: str, values: dict[str, str]) -> str:
         raise ValueError("Nginx rendering requires the complete fixed setting set")
     if not HOST.fullmatch(values["PUBLIC_HOST"]):
         raise ValueError("Public host must be one lowercase DNS hostname")
+    ipaddress.IPv4Address(values["LISTEN_ADDRESS"])
     for key in (
         "TLS_CERTIFICATE",
         "TLS_PRIVATE_KEY",
@@ -45,7 +50,13 @@ def render(template: str, values: dict[str, str]) -> str:
         **values,
         "API_PORT": _port(values["API_PORT"]),
         "WEB_PORT": _port(values["WEB_PORT"]),
+        "HTTP_PORT": _port(values["HTTP_PORT"]),
+        "HTTPS_PORT": _port(values["HTTPS_PORT"]),
     }
+    authority = values["PUBLIC_HOST"]
+    if values["HTTPS_PORT"] != "443":
+        authority += ":" + values["HTTPS_PORT"]
+    values["PUBLIC_AUTHORITY"] = authority
     rendered = template
     for key, value in values.items():
         rendered = rendered.replace("{{" + key + "}}", value)
@@ -66,6 +77,9 @@ def main() -> None:
     parser.add_argument("--error-log", required=True)
     parser.add_argument("--api-port", default="8000")
     parser.add_argument("--web-port", default="3000")
+    parser.add_argument("--listen-address", default="0.0.0.0")
+    parser.add_argument("--http-port", default="80")
+    parser.add_argument("--https-port", default="443")
     args = parser.parse_args()
     rendered = render(
         args.template.read_text(encoding="utf-8"),
@@ -78,6 +92,9 @@ def main() -> None:
             "ERROR_LOG": args.error_log,
             "API_PORT": args.api_port,
             "WEB_PORT": args.web_port,
+            "LISTEN_ADDRESS": args.listen_address,
+            "HTTP_PORT": args.http_port,
+            "HTTPS_PORT": args.https_port,
         },
     )
     args.output.write_text(rendered, encoding="utf-8", newline="\n")

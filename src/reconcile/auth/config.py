@@ -40,10 +40,19 @@ def origin(value: str) -> str:
 def _validate_production_database_transport(value: str) -> None:
     try:
         parts = urlsplit(value)
-        parameters = parse_qs(parts.query)
+        parameters = parse_qs(parts.query, keep_blank_values=True)
+        valid = (
+            parts.scheme in {"postgresql", "postgresql+psycopg"}
+            and parts.hostname
+            and parts.port != 0
+            and not parts.fragment
+            and not {"host", "hostaddr", "service", "dbname"}.intersection(parameters)
+        )
     except ValueError:
         raise ValueError("Production database configuration is invalid") from None
-    if parts.hostname and parts.hostname.lower() not in _LOOPBACK_DATABASE_HOSTS:
+    if not valid:
+        raise ValueError("Production database configuration requires an explicit connection host")
+    if parts.hostname.lower() not in _LOOPBACK_DATABASE_HOSTS:
         if parameters.get("sslmode") != ["verify-full"]:
             raise ValueError("Remote production databases require sslmode=verify-full")
 

@@ -6,6 +6,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -31,9 +32,10 @@ class RequestIdMiddleware:
 
         async def identified_send(message):
             if message["type"] == "http.response.start":
-                message["headers"].append(
-                    (REQUEST_ID_HEADER.lower().encode(), str(request_id).encode())
-                )
+                headers = MutableHeaders(scope=message)
+                headers[REQUEST_ID_HEADER] = str(request_id)
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["Referrer-Policy"] = "no-referrer"
             await send(message)
 
         await self.app(scope, receive, identified_send)

@@ -9,7 +9,8 @@ User=reconcile
 Group=reconcile
 WorkingDirectory=/opt/reconcile/current/frontend
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s

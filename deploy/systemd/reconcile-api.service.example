@@ -9,7 +9,7 @@ User=reconcile
 Group=reconcile
 WorkingDirectory=/opt/reconcile/current
 EnvironmentFile=/etc/reconcile/reconcile.env
-ExecStart=/opt/reconcile/venv/bin/python -m uvicorn reconcile.web.app:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1 --limit-concurrency 16 --backlog 64 --timeout-keep-alive 5 --no-access-log
+ExecStart=/opt/reconcile/venv/bin/python -m uvicorn reconcile.web.app:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1 --limit-concurrency 16 --backlog 64 --timeout-keep-alive 5 --timeout-graceful-shutdown 25 --no-access-log --log-config /opt/reconcile/current/deploy/logging.json
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
@@ -17,7 +17,7 @@ KillSignal=SIGTERM
 UMask=0077
 LimitNOFILE=4096
 TasksMax=128
-MemoryMax=1G
+MemoryMax=3G
 NoNewPrivileges=true
 PrivateDevices=true
 PrivateTmp=true

@@ -1,9 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 const ORIGIN = process.env.PRODUCTION_E2E_ORIGIN?.trim() || "https://localhost";
+const HTTP_ORIGIN = process.env.PRODUCTION_E2E_HTTP_ORIGIN?.trim() || "http://localhost";
 const MANAGER =
   process.env.PRODUCTION_E2E_MANAGER_EMAIL?.trim() ||
   "deployment-manager@example.com";
@@ -50,11 +52,11 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
   playwright,
   request,
 }) => {
-  const redirect = await request.get("http://localhost/health", {
+  const redirect = await request.get(`${HTTP_ORIGIN}/health`, {
     maxRedirects: 0,
   });
   expect(redirect.status()).toBe(308);
-  expect(redirect.headers().location).toBe("https://localhost/health");
+  expect(redirect.headers().location).toBe(`${ORIGIN}/health`);
 
   const live = await request.get(`/health?probe=${PRIVATE_MARKER}`, {
     headers: {
@@ -79,6 +81,17 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
   );
   expect(frontendHeaders["x-content-type-options"]).toBe("nosniff");
   expect(frontendHeaders["permissions-policy"]).toContain("camera=()");
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+  await page.getByLabel("Email", { exact: true }).fill(MANAGER);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/reconcile$/);
+  await page.reload();
+  await expect(page.getByText("Deployment manager", { exact: true })).toBeVisible();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
 
   const loginResponse = await login(request, MANAGER);
   const setCookies = loginResponse
@@ -110,6 +123,7 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
     ),
   );
   const created = await request.post("/api/v1/runs/three-way", {
+    headers: { Origin: ORIGIN, "X-CSRF-Token": await csrf(request) },
     multipart: {
       purchase_orders: samples[0],
       receipts: samples[1],
@@ -119,8 +133,8 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
   expect(created.status()).toBe(201);
   const saved = await created.json();
   expect(saved.report.summary).toMatchObject({
-    total_invoices: 15,
-    total_invoice_lines: 17,
+    invoices_processed: 15,
+    invoice_lines_processed: 17,
     matched_lines: 6,
     review_required_lines: 11,
     disputed_amounts: { EUR: "2450.00", MAD: "10199.00", USD: "75.00" },
@@ -160,7 +174,7 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
     },
   });
   expect(spoofed.status()).toBe(307);
-  expect(spoofed.headers().location).toMatch(/^https:\/\/localhost\//);
+  expect(spoofed.headers().location).toBe(`${ORIGIN}${AUTH}/me`);
   expect(spoofed.headers().location).not.toContain("attacker.example");
 
   const oversizedAuth = await request.post(`${AUTH}/login`, {
@@ -176,6 +190,10 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
   });
   expect(oversizedUpload.status()).toBe(413);
 
+  const logout = await postAuth(request, "logout");
+  expect(logout.status()).toBe(200);
+  expect((await request.get(`${AUTH}/me`)).status()).toBe(401);
+
   const rateStatuses: number[] = [];
   const proof = await csrf(request);
   for (let index = 0; index < 12; index += 1) {
@@ -186,8 +204,4 @@ test("production HTTPS proxy preserves the complete security boundary", async ({
     rateStatuses.push(response.status());
   }
   expect(rateStatuses).toContain(429);
-
-  const logout = await postAuth(request, "logout");
-  expect(logout.status()).toBe(200);
-  expect((await request.get(`${AUTH}/me`)).status()).toBe(401);
 });

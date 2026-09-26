@@ -31,6 +31,7 @@ const pythonExecutable =
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "deployment.spec.ts",
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,

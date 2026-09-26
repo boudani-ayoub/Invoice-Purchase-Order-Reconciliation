@@ -54,6 +54,11 @@ def settings():
         {"identity_database_url": ("postgresql://tenant@example.com/product?sslmode=verify-full")},
         {"docs_enabled": True},
         {"identity_database_url": "postgresql://identity@db.example.com/product"},
+        {"identity_database_url": "postgresql://identity@localhost/product?host=db.example.com"},
+        {"identity_database_url": "postgresql://identity@localhost/product?hostaddr=192.0.2.1"},
+        {"identity_database_url": "postgresql://identity@localhost/product?service=remote"},
+        {"identity_database_url": "postgresql:///product"},
+        {"identity_database_url": "postgresql://identity@localhost:99999/product"},
         {"trusted_origins": ("*",)},
         {
             "frontend_origin": "http://reconcile.example.com",

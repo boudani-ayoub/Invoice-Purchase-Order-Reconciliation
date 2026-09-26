@@ -22,7 +22,7 @@ upstream reconcile_web {
 }
 
 server {
-    listen 80 default_server;
+    listen {{LISTEN_ADDRESS}}:{{HTTP_PORT}} default_server;
     server_name _;
     access_log off;
     error_log {{ERROR_LOG}} crit;
@@ -30,23 +30,23 @@ server {
 }
 
 server {
-    listen 80;
+    listen {{LISTEN_ADDRESS}}:{{HTTP_PORT}};
     server_name {{PUBLIC_HOST}};
 
     access_log {{ACCESS_LOG}} reconcile_safe;
     error_log {{ERROR_LOG}} crit;
-    return 308 https://{{PUBLIC_HOST}}$request_uri;
+    return 308 https://{{PUBLIC_AUTHORITY}}$request_uri;
 }
 
 server {
-    listen 443 ssl default_server;
+    listen {{LISTEN_ADDRESS}}:{{HTTPS_PORT}} ssl default_server;
     access_log off;
     error_log {{ERROR_LOG}} crit;
     ssl_reject_handshake on;
 }
 
 server {
-    listen 443 ssl;
+    listen {{LISTEN_ADDRESS}}:{{HTTPS_PORT}} ssl;
     server_name {{PUBLIC_HOST}};
 
     access_log {{ACCESS_LOG}} reconcile_safe;
@@ -71,12 +71,13 @@ server {
 
     proxy_http_version 1.1;
     proxy_set_header Connection "";
-    proxy_set_header Host $host;
+    proxy_set_header Host {{PUBLIC_AUTHORITY}};
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-Host {{PUBLIC_AUTHORITY}};
+    proxy_set_header X-Forwarded-Port {{HTTPS_PORT}};
+    proxy_set_header Forwarded "";
     proxy_hide_header Server;
 
     location = /health {
@@ -95,7 +96,29 @@ server {
         proxy_pass http://reconcile_api;
     }
 
-    location ~ ^/api/v1/auth/(?:login|register|forgot-password|resend-verification|verify-email|reset-password|invitations/preview|invitations/accept|register-invited)$ {
+    error_page 413 = @too_large;
+    error_page 429 = @throttled;
+    error_page 502 503 504 = @unavailable;
+    location @too_large {
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        add_header X-Content-Type-Options nosniff always;
+        return 413 '{"error":"request_too_large"}';
+    }
+    location @throttled {
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        add_header X-Content-Type-Options nosniff always;
+        return 429 '{"error":"network_throttled"}';
+    }
+    location @unavailable {
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        add_header X-Content-Type-Options nosniff always;
+        return 503 '{"error":"service_unavailable"}';
+    }
+
+    location ~ ^/api/v1/auth/(?:login|register|forgot-password|resend-verification|verify-email|reset-password|invitations/preview|invitations/accept|register-invited)/?$ {
         client_max_body_size 32k;
         limit_req zone=reconcile_auth burst=5 nodelay;
         limit_req_status 429;
@@ -103,11 +126,9 @@ server {
         proxy_send_timeout 20s;
         proxy_read_timeout 20s;
         proxy_pass http://reconcile_api;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
     }
 
-    location ~ ^/api/v1/(?:reconcile|analyses/|runs/(?:invoice-po|invoice-receipt|po-receipt|three-way)) {
+    location ~ ^/api/v1/(?:reconcile|(?:analyses|runs)/(?:invoice-po|invoice-receipt|po-receipt|three-way))/?$ {
         client_max_body_size 32m;
         limit_conn reconcile_per_ip 4;
         limit_req zone=reconcile_upload burst=3 nodelay;
@@ -116,8 +137,6 @@ server {
         proxy_send_timeout 130s;
         proxy_read_timeout 130s;
         proxy_pass http://reconcile_api;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
     }
 
     location /api/ {
@@ -126,8 +145,6 @@ server {
         proxy_send_timeout 30s;
         proxy_read_timeout 30s;
         proxy_pass http://reconcile_api;
-        add_header X-Content-Type-Options nosniff always;
-        add_header Referrer-Policy no-referrer always;
     }
 
     location / {
