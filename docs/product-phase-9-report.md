@@ -2,8 +2,10 @@
 
 ## Status and baseline
 
-Phase 9 is complete and verified locally as deployment readiness, not a public deployment or
-production certification. Remote verification has not been performed and no push is authorized.
+Phase 9 is complete and remotely verified as deployment readiness, not a public deployment or
+production certification. This report first recorded local verification before the authorized push;
+at that point remote verification had not been performed. The later remote evidence is recorded
+separately in [Remote closure](#remote-closure).
 
 Starting commit: `9ef306dc0012650141af9ea84f8303e397270e28` (`docs: record product phase 8 CI success`).
 The previously verified Phase 8 baseline passed GitHub Actions run `35146786677`. Those results do
@@ -132,21 +134,51 @@ Procurement/supplier intelligence remains selected-run only; repeated runs are n
 GoodsReceipt evidence still does not post inventory, and there is no valuation or unlike-item
 quantity rollup.
 
-Local implementation commits, in order:
+Phase 9 implementation and readiness commits, initially verified locally, in order:
 
 - `120f4701ecb974c82587e74ef376e48f84fa6b81` — `feat: harden production runtime boundary`
 - `05ed4e01da33186834cf4f08bc11741a4b48b578` — `ops: add same-origin deployment profile`
 - `dc29fa290fdb1932165d9a6414d0962e4975055c` — `test: verify production proxy and recovery boundary`
 - `23a3aeed3fd3aece1a47b2a328a9d7e9f717304a` — `fix: close production profile verification gaps`
+- `2e7143c7d5954f30e10b3f213be5c142076f5f21` — `docs: record product phase 9 readiness`
 
-The final local HEAD is the `docs: record product phase 9 readiness` commit containing this report;
-resolve its exact identifier with `git rev-parse HEAD`. Documentation is the only change after the
-tested implementation HEAD `23a3aeed3fd3aece1a47b2a328a9d7e9f717304a`.
+The original readiness report ended at local HEAD
+`2e7143c7d5954f30e10b3f213be5c142076f5f21`. That commit changed only documentation after the
+locally tested implementation HEAD `23a3aeed3fd3aece1a47b2a328a9d7e9f717304a`.
 
-The intended final working-tree status is only the preserved, unrelated untracked root
-`package-lock.json`; no generated artifacts or unrelated files are staged. Its SHA-256 remains
+The local readiness working-tree check found only the preserved, unrelated untracked root
+`package-lock.json`; no generated artifacts or unrelated files were staged. Its SHA-256 remains
 `DAA0308A5EB8C96651E80918807B4EC840C32FA960BC4308AC915136161868AE`.
-Remote main was independently checked on 2026-09-26 and remains the starting SHA
-`9ef306dc0012650141af9ea84f8303e397270e28`. No Phase 9 GitHub Actions run exists because no push was
-performed. Phase 9 is complete and verified locally; remote verification remains pending.
+Before the authorized Phase 9 push, remote main was independently checked on 2026-09-26 and was
+still the starting SHA `9ef306dc0012650141af9ea84f8303e397270e28`. At that point no Phase 9 GitHub
+Actions run existed because no push had been performed. The five commits above were subsequently
+pushed to main and remotely verified as recorded below.
 No phase after Phase 9 has begun.
+
+## Remote closure
+
+Phase 9 pushed/tested HEAD: `2e7143c7d5954f30e10b3f213be5c142076f5f21`.
+
+GitHub Actions run: [36253018043](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/36253018043).
+Result: **SUCCESS**. This is the first remotely verified Phase 9 readiness run. All five jobs passed:
+
+1. Python 3.11
+2. Python 3.12
+3. PostgreSQL and authentication integration
+4. Frontend and authenticated browser verification
+5. Production deployment verification
+
+Phase 9 is complete and remotely verified. The planned nine-phase product roadmap is complete.
+The repository has a remotely verified production deployment-readiness profile and production-like
+HTTPS acceptance test. No actual public/cloud deployment exists, and no customer-facing
+infrastructure was provisioned.
+
+Real deployment still requires operator-owned DNS, a real CA certificate and renewal, private
+networking/firewall, a secret manager, real SMTP validation, scheduled encrypted/off-host backups,
+monitoring/alerts/on-call, capacity measurement, defined RPO/RTO, retention/legal policy, and an
+environment-specific security assessment, with penetration testing where appropriate for real
+customer use. The residual risks and limitations above remain unchanged by successful CI.
+
+This remote evidence applies to the exact pushed/tested HEAD above. The final docs-only closure
+commit's own GitHub Actions run must be independently verified before the repository's planned
+nine-phase roadmap is declared formally closed. No further product phase is started by this update.

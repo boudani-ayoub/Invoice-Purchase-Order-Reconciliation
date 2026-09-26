@@ -7,7 +7,8 @@ authenticated multi-tenant web application. It includes saved evidence, AP excep
 organization governance, an explicit append-only inventory ledger, run-scoped procurement/supplier
 intelligence, and a reproducible production deployment profile.
 
-**Status:** all nine planned product phases are complete locally. Phase 9 adds the concrete
+**Status:** the planned nine-phase product sequence is complete, with Phase 9 remotely verified.
+Phase 9 adds the concrete
 same-origin Nginx/systemd profile, fail-closed production configuration, dependency readiness,
 safe structured request logging, network resource limits, current-schema restore verification,
 release/rollback/incident/monitoring procedures, a production-like HTTPS CI stack, and the final

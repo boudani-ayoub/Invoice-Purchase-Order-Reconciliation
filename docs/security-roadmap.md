@@ -38,12 +38,20 @@ needs operational approval. Phase 1 history remains in its report and data-model
 6. **Phase 6 — complete:** explicit admin permissions, membership lifecycle and last-admin invariant, secure invitations/invited registration, organization rename, and bounded organization audit. See [verification report](product-phase-6-report.md) and [threat review](threat-model-governance.md).
 7. **Phase 7 — complete:** explicit append-only inventory ledger, exact derived on-hand, ordered locking, atomic transfer/reversal, idempotent posting, and strict procurement separation. See [ledger semantics](inventory-ledger.md), [verification report](product-phase-7-report.md), and [threat review](threat-model-inventory.md).
 8. **Phase 8 — complete and remotely verified:** selected-run procurement/supplier evidence, current-ledger inventory activity, explicit metric semantics, bounded query plans, and role-aware Insights. Pushed at `26bc8538a735de3f897df220c04b24f476bc92e4`; all four jobs passed in GitHub Actions run `35146236072`. See [metric semantics](intelligence-metrics.md), [verification report](product-phase-8-report.md), and [threat review](threat-model-intelligence.md).
-9. **Phase 9 — complete locally; remote verification pending:** fail-closed production configuration,
+9. **Phase 9 — complete and remotely verified:** fail-closed production configuration,
    concrete same-origin Nginx/systemd profile, bounded readiness and safe structured logging, proxy
    resource controls, current-schema restore evidence, release/rollback/incident/monitoring runbooks,
-   a production-like HTTPS CI topology, and the final threat model. No external service was deployed.
+   a production-like HTTPS CI topology, and the final threat model. Pushed/tested at
+   `2e7143c7d5954f30e10b3f213be5c142076f5f21`; all five jobs passed in
+   [GitHub Actions run 36253018043](https://github.com/boudani-ayoub/Invoice-Purchase-Order-Reconciliation/actions/runs/36253018043).
+   No external service was deployed.
    See [deployment](deployment.md), [incident response](incident-response.md),
    [final threat model](threat-model-final.md), and [verification report](product-phase-9-report.md).
+
+The planned nine-phase product sequence is complete. Formal repository closure still requires
+independent verification of the final docs-only closure commit's own GitHub Actions run; the Phase 9
+evidence above applies to its exact tested HEAD. Real deployment remains operator-owned work, not an
+additional product phase or a certification claim.
 
 RLS protects configured database transactions; FastAPI now authenticates HTTP requests. A process able to
 execute arbitrary SQL using the runtime login can set its own organization context; identity and
