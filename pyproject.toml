@@ -27,7 +27,7 @@ reconcile = "reconcile.cli:main"
 dev = [
   "build>=1.2,<2",
   "httpx2>=2.12,<3",
-  "pytest>=7.4,<9",
+  "pytest>=7.4,<10",
   "ruff>=0.6,<1",
 ]
 web = [
